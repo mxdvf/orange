@@ -44,6 +44,15 @@ func (t *BTree) Insert(k uint16) {
 	}
 }
 
+/////////////////////////////////////////
+/// IF THINKING OF COMBINING t.splitRoot() and t.splitChild()
+/// KEEP IN MIND THERE ARE ACTUALLY 3 EDGE CASES or MAYBE NOT
+/// IF WE CAN COMPRESS THEM DOWN:
+/// -- leave split process
+/// -- root split process
+/// -- internal node split process
+/////////////////////////////////////////
+
 func (t *BTree) splitRoot() *Node {
 	// order keys to prepare them for a split
 	tempKeys := make([]uint16, MAX_KEYS_PER_NODE)
@@ -129,11 +138,18 @@ func (t *BTree) splitChild(parent *Node, child *Node, k *uint16) {
 	parent.keys[idx] = tempKeys[median]
 
 	// setup new child nodes
-	left, right := NewNode(true, tempKeys[:median]), NewNode(true, tempKeys[median+1:])
-	// TODO: the logic here is that instead of creating two nodes, create just one, and manipulate the other existing one
+	left, right := NewNode(child.isLeaf, tempKeys[:median]), NewNode(child.isLeaf, tempKeys[median+1:])
 	parent.children[idx] = left
+	// TODO: the logic here is that instead of creating two nodes
+	// create just one, and manipulate the other existing one
 	copy(parent.children[idx+1:], parent.children[idx:])
 	parent.children[idx+1] = right
+
+	// redistribute the children of child nodes
+	if k == nil {
+		copy(left.children, child.children[:median+1])
+		copy(right.children, child.children[median+1:])
+	}
 }
 
 // calculateAppropriateIdx returns an int which provides the appropriate
@@ -175,8 +191,7 @@ func main() {
 	tree.Insert(21)
 	tree.Insert(22)
 	tree.Insert(4)
-	// tree.Insert(5)
-
+	tree.Insert(5) // very amazing testcase, my tree solved it when literally i couldn't figure out what might happen here
 	print(tree.root)
 }
 
@@ -187,7 +202,6 @@ func print(root *Node) {
 
 	queue := []*Node{root}
 	level := 0
-
 	for len(queue) > 0 {
 		size := len(queue)
 
