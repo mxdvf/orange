@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"slices"
-	"strings"
 )
 
 const BRANCHING_FACTOR_T = 2
@@ -24,7 +23,7 @@ func NewNode(isLeaf bool, keys []uint16) *Node {
 		isLeaf:   isLeaf,
 	}
 	if keys != nil {
-		node.keys = keys
+		node.keys = append(node.keys, keys...)
 	}
 	return node
 }
@@ -36,21 +35,43 @@ type BTree struct {
 func (t *BTree) Insert(k uint16) {
 	if len(t.root.keys) == MAX_KEYS_PER_NODE {
 		// break the root down before going any further
-		newRoot := NewNode(false, nil)
-		t.splitChild(newRoot, t.root, k)
-		t.root = newRoot
-
+		t.root = t.splitRoot()
 		// perform the insert operation as intended
 		t.insertInSubtree(t.root, k)
 	} else {
-		fmt.Println("48 ki fielding bithaayi hai", t.root.keys, k)
 		// perform the insert operation as intended
 		t.insertInSubtree(t.root, k)
 	}
 }
 
+func (t *BTree) splitRoot() *Node {
+	// order keys to prepare them for a split
+	tempKeys := make([]uint16, MAX_KEYS_PER_NODE)
+	copy(tempKeys, t.root.keys)
+
+	// setup the new root and evaluate median
+	newRoot := NewNode(false, nil)
+
+	// parent stores the derived median key
+	median := len(tempKeys) / 2
+	newRoot.keys = append(newRoot.keys, tempKeys[median])
+
+	// setup new child nodes
+	left, right := NewNode(t.root.isLeaf, tempKeys[:median]), NewNode(t.root.isLeaf, tempKeys[median+1:])
+	newRoot.children[0] = left
+	newRoot.children[1] = right
+
+	// if the root is not a leaf, then we must reattach
+	// the children of old root as children of new root
+	if !t.root.isLeaf {
+		copy(left.children, t.root.children[:median+1])
+		copy(right.children, t.root.children[median+1:])
+	}
+
+	return newRoot
+}
+
 func (t *BTree) insertInSubtree(node *Node, k uint16) {
-	fmt.Println("fielding dekhte hai kahan pohochi", node.keys, node.isLeaf, k)
 	// Case A: node is a leaf and has space
 	if node.isLeaf && len(node.keys) < MAX_KEYS_PER_NODE {
 		t.insertInNode(node, k)
@@ -59,67 +80,68 @@ func (t *BTree) insertInSubtree(node *Node, k uint16) {
 
 	// Case B: node is not a leaf
 	if !node.isLeaf {
+		// and then proceed
 		idx := t.calculateAppropriateIdx(node.keys, k)
-		fmt.Println("deep internals tak pohoch chuka hoon", node.children, idx, k)
 		switch {
 		// Case B1: if child is not a leaf, keep traversing
 		case !node.children[idx].isLeaf:
+			// pre-emptively break down an internal node if it's full
+			if len(node.children[idx].keys) == MAX_KEYS_PER_NODE {
+				t.splitChild(node, node.children[idx], nil)
+			}
+			// then proceed
 			t.insertInSubtree(node.children[idx], k)
 
 		// Case B2: if appropriate child (a leaf) has space, insert there
 		case node.children[idx].isLeaf && len(node.children[idx].keys) < MAX_KEYS_PER_NODE:
 			t.insertInNode(node.children[idx], k)
 
-			// Case B3: if appropriate child (a leaf) does not have space, perform split
+		// Case B3: if appropriate child (a leaf) does not have space, perform split
 		case node.children[idx].isLeaf && len(node.children[idx].keys) == MAX_KEYS_PER_NODE:
-			t.splitChild(node, node.children[idx], k)
+			t.splitChild(node, node.children[idx], &k)
 		}
 	}
 }
 
 func (t *BTree) insertInNode(node *Node, k uint16) {
-	// calculates the appropriate index and inserts `k`
-	idx := t.calculateAppropriateIdx(node.keys, k)
-	node.keys = slices.Insert(node.keys, idx, k)
+	// Does not matter if any shuffling happens, because by
+	// the time we require the indices everything will anyways
+	// be settled. Basically this works, no worries on this.
+	node.keys = append(node.keys, k)
+	slices.Sort(node.keys)
 }
 
-func (t *BTree) splitChild(parent *Node, child *Node, k uint16) {
+func (t *BTree) splitChild(parent *Node, child *Node, k *uint16) {
 	// order keys to prepare them for a split
 	tempKeys := make([]uint16, MAX_KEYS_PER_NODE)
 	copy(tempKeys, child.keys)
-	if child != t.root {
-		idx := t.calculateAppropriateIdx(tempKeys, k)
-		tempKeys = slices.Insert(tempKeys, idx, k)
+	if k != nil {
+		idx := t.calculateAppropriateIdx(tempKeys, *k)
+		tempKeys = slices.Insert(tempKeys, idx, *k)
 	}
 
 	median := len(tempKeys) / 2
 
 	// parent stores the derived median key
 	idx := t.calculateAppropriateIdx(parent.keys, tempKeys[median])
-	parent.keys = slices.Insert(parent.keys, idx, tempKeys[median])
+	parent.keys = append(parent.keys, 0)
+	copy(parent.keys[idx+1:], parent.keys[idx:])
+	parent.keys[idx] = tempKeys[median]
 
 	// setup new child nodes
 	left, right := NewNode(true, tempKeys[:median]), NewNode(true, tempKeys[median+1:])
-	fmt.Printf("konsa baap ki aulaad yahan se jaane wala hai: %+v and %d\n", parent.children, idx)
-	parent.children[idx] = nil // TODO: shady line, the logic here is that instead of creating two nodes, create just one, and manipulate the other existing one
-	parent.children = slices.Insert(parent.children, idx, left)
-	parent.children = slices.Insert(parent.children, idx+1, right)
-
-	if child == t.root && !child.isLeaf {
-		left.children = child.children[:median+1]
-		right.children = child.children[median+1:]
-		// TODO: change to copy function if too much issues
-
-		left.isLeaf = false
-		right.isLeaf = false
-	}
-	fmt.Printf("konsa baap ki aulaad yahan se jaane wala hai: %+v and %d\n", parent.children, idx)
+	// TODO: the logic here is that instead of creating two nodes, create just one, and manipulate the other existing one
+	parent.children[idx] = left
+	copy(parent.children[idx+1:], parent.children[idx:])
+	parent.children[idx+1] = right
 }
 
 // calculateAppropriateIdx returns an int which provides the appropriate
 // index within the "sorted" slice of keys. Used for finding appropriate
 // child or appropriate position for a key
 func (t *BTree) calculateAppropriateIdx(nodeKeys []uint16, k uint16) int {
+	// the idea is to return an "appropriate" index for finding
+	// the correct child or position for a key
 	var idx int
 	for idx = 0; idx < len(nodeKeys); idx++ {
 		if k < nodeKeys[idx] {
@@ -136,60 +158,59 @@ func main() {
 
 	tree.Insert(20)
 	tree.Insert(10)
-	// tree.Insert(11)
-	// tree.Insert(24)
-	// tree.Insert(6)
-	// tree.Insert(28)
-	// tree.Insert(32)
-	// tree.Insert(25)
-	// tree.Insert(26)
-	// tree.Insert(18)
-	// tree.Insert(48)
-	// tree.Insert(60)
-	// tree.Insert(83)
-	// tree.Insert(90)
-	// tree.Insert(4)
-	// tree.Insert(tree.root, 6)
-	// tree.Insert(tree.root, 1)
-	// tree.Insert(tree.root, 3)
-	// tree.Insert(tree.root, 4)
-	// tree.Insert(tree.root, 12)
-	// tree.Insert(tree.root, 13)
-	// tree.Insert(tree.root, 14)
-	print(tree)
+	tree.Insert(11)
+	tree.Insert(24)
+	tree.Insert(6)
+	tree.Insert(28)
+	tree.Insert(32)
+	tree.Insert(18)
+	tree.Insert(26)
+	tree.Insert(25)
+
+	// after our complete tree construction:
+	tree.Insert(27)
+	tree.Insert(2)
+	tree.Insert(48)
+	tree.Insert(1)
+	tree.Insert(21)
+	tree.Insert(22)
+	tree.Insert(4)
+	// tree.Insert(5)
+
+	print(tree.root)
 }
 
-func print(t *BTree) {
-	nodeList := [][]*Node{{t.root}}
+func print(root *Node) {
+	if root == nil {
+		return
+	}
+
+	queue := []*Node{root}
 	level := 0
-	for len(nodeList[0]) != 0 {
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("Level %d:\n", level))
 
-		nodes := nodeList[0]
-		for _, node := range nodes {
-			if node == nil {
-				continue
-			}
+	for len(queue) > 0 {
+		size := len(queue)
 
-			sb.WriteString("[")
-			for i := 0; i < len(node.keys); i++ {
-				sb.WriteString(fmt.Sprintf(" %v ", node.keys[i]))
+		fmt.Printf("Level %d:\n", level)
+
+		for i := range len(queue) {
+			node := queue[i]
+
+			fmt.Print("[")
+			for _, k := range node.keys {
+				fmt.Printf(" %v ", k)
 			}
-			sb.WriteString("]")
+			fmt.Print("]")
+
+			for _, c := range node.children {
+				if c != nil {
+					queue = append(queue, c)
+				}
+			}
 		}
-		fmt.Println(sb.String())
+
 		fmt.Println()
-
-		list := []*Node{}
-		for _, node := range nodes {
-			if node != nil {
-				list = append(list, node.children...)
-			}
-		}
-		nodeList = append(nodeList, list)
-
+		queue = queue[size:] // move to next level
 		level++
-		nodeList = nodeList[1:]
 	}
 }
