@@ -32,6 +32,35 @@ type BTree struct {
 	root *Node
 }
 
+func (t *BTree) Search(k uint16) bool {
+	node := t.root
+	for node != nil {
+		isKeyExists := t.isKeyExists(node.keys, k)
+		if isKeyExists {
+			return true
+		}
+		if !isKeyExists && node.isLeaf {
+			return false
+		}
+
+		idx := t.calculateAppropriateIdx(node.keys, k)
+		node = node.children[idx]
+	}
+
+	return false
+}
+
+func (t *BTree) isKeyExists(nodeKeys []uint16, k uint16) bool {
+	// simple linear search
+	var idx int
+	for idx = 0; idx < len(nodeKeys); idx++ {
+		if k == nodeKeys[idx] {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *BTree) Insert(k uint16) {
 	if len(t.root.keys) == MAX_KEYS_PER_NODE {
 		// break the root down before going any further
@@ -43,15 +72,6 @@ func (t *BTree) Insert(k uint16) {
 		t.insertInSubtree(t.root, k)
 	}
 }
-
-/////////////////////////////////////////
-/// IF THINKING OF COMBINING t.splitRoot() and t.splitChild()
-/// KEEP IN MIND THERE ARE ACTUALLY 3 EDGE CASES or MAYBE NOT
-/// IF WE CAN COMPRESS THEM DOWN:
-/// -- leave split process
-/// -- root split process
-/// -- internal node split process
-/////////////////////////////////////////
 
 func (t *BTree) splitRoot() *Node {
 	// order keys to prepare them for a split
@@ -167,35 +187,9 @@ func (t *BTree) calculateAppropriateIdx(nodeKeys []uint16, k uint16) int {
 	return idx
 }
 
-func main() {
-	tree := &BTree{
-		root: NewNode(true, nil),
-	}
-
-	tree.Insert(20)
-	tree.Insert(10)
-	tree.Insert(11)
-	tree.Insert(24)
-	tree.Insert(6)
-	tree.Insert(28)
-	tree.Insert(32)
-	tree.Insert(18)
-	tree.Insert(26)
-	tree.Insert(25)
-
-	// after our complete tree construction:
-	tree.Insert(27)
-	tree.Insert(2)
-	tree.Insert(48)
-	tree.Insert(1)
-	tree.Insert(21)
-	tree.Insert(22)
-	tree.Insert(4)
-	tree.Insert(5) // very amazing testcase, my tree solved it when literally i couldn't figure out what might happen here
-	print(tree.root)
-}
-
-func print(root *Node) {
+// print is a recursive function that uses BFS (damn! never thought I would)
+// use it in my systems journey)
+func Print(root *Node) {
 	if root == nil {
 		return
 	}
@@ -206,7 +200,6 @@ func print(root *Node) {
 		size := len(queue)
 
 		fmt.Printf("Level %d:\n", level)
-
 		for i := range len(queue) {
 			node := queue[i]
 
@@ -222,9 +215,17 @@ func print(root *Node) {
 				}
 			}
 		}
-
 		fmt.Println()
+
 		queue = queue[size:] // move to next level
 		level++
 	}
+}
+
+func main() {
+	tree := &BTree{
+		root: NewNode(true, nil),
+	}
+	mockInsert(tree)
+	fmt.Println(tree.Search(90))
 }
