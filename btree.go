@@ -8,6 +8,7 @@ import (
 const BRANCHING_FACTOR_T = 2
 
 const MAX_KEYS_PER_NODE = (2 * BRANCHING_FACTOR_T) - 1
+const MIN_KEYS_PER_NODE = BRANCHING_FACTOR_T - 1
 const MAX_CHILDREN_PER_NODE = 2 * BRANCHING_FACTOR_T
 
 type Node struct {
@@ -32,32 +33,48 @@ type BTree struct {
 	root *Node
 }
 
-// Case 1: leaf has t keys --> simply delete it
-
-// Case 2A: internal node, left child has t keys --> predecessor mechanism
-// Case 2B: internal node, left child has t-1 BUT right child has t keys --> successor mechanism
-// Case 2C: internal node, neither child has t keys --> merging left, right and the key and then removing the key
-
-// Preemptive fixation: about to get into a node that has t-1 keys --> if sibling has t keys then borrow/rotate, if not then merge
-// ---- only reason we do this is because let's say we're about to descend into a child with t-1 keys, and the key to be deleted is in that child
-// ---- which we figure out on the next iteraiton obviously, then it causes a lot of issues because we then retroactively fix the tree which is tougher
-// ---- than proactively fixing it
-
 func (t *BTree) Delete(k uint16) {
-	// setup: recursive function, each time, we specify the next child -- something like delete(node, k)
+	node := t.root
+	t.delete(node, k)
+}
 
-	// 0. as soon as you enter a given node, perform proactive remediation here
+func (t *BTree) delete(node *Node, k uint16) {
+	// we preemptively fix this node (which has t-1 keys), because assume if this is the node
+	// that contains the key `k` then it would cause a lot of complexity to fix it retroactively
+	// once the key is deleted
+	if len(node.keys) == MIN_KEYS_PER_NODE {
+		// TODO: preemptive fixation --> about to get into a node that has t-1 keys --> if sibling has t keys then borrow/rotate, if not then merge
+	}
 
-	// 1. now that you're on the node, check if it even contains the key
-	// 2. if not, recurse to the next possible child
+	// if the node does not have the key, recurse to the next possible child
+	if !slices.Contains(node.keys, k) {
+		idx := t.calculateAppropriateIdx(node.keys, k)
+		t.delete(node.children[idx], k)
+		return
+	}
 
-	// 3. if yes, do this:
-	// A. if it's a leaf and has t keys, delete
-	// B. if it's an internal node, left child has t keys --> predecessor mechanism
-	// C. if it's an internal node && left child does not have t keys, right child does --> successor mechanism
+	// else, the node has the key, let's check for the different scenarios
+
+	// Case A: if it's a leaf and has t keys, delete
+	if node.isLeaf {
+		// TODO
+	}
+
+	idx := slices.Index(node.keys, k)
+	switch {
+	// Case B: if it's an internal node, left child has t keys --> predecessor mechanism
+	case !node.isLeaf && len(node.children[idx-1].keys) > MIN_KEYS_PER_NODE:
+		// TODO
+
+	// Case C: if it's an internal node && left child does not have t keys, right child does --> successor mechanism
+	case !node.isLeaf && len(node.children[idx].keys) > MIN_KEYS_PER_NODE:
+		// TODO
+
 	// D. if it's an internal node, neither child has t keys --> perform merging of left, right and the key followed by removing the key
+	default:
+		// TODO
 
-	// *** even if internal node has `t` keys, cannot delete it because who will replace the key? where will the children go? someone needs to maintain the balance
+	}
 }
 
 func (t *BTree) Search(k uint16) bool {
