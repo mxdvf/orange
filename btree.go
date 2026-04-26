@@ -42,8 +42,9 @@ func (t *BTree) delete(node *Node, k uint16) {
 	// we preemptively fix this node (which has t-1 keys), because assume if this is the node
 	// that contains the key `k` then it would cause a lot of complexity to fix it retroactively
 	// once the key is deleted
-	if len(node.keys) == MIN_KEYS_PER_NODE {
+	if len(node.keys) <= MIN_KEYS_PER_NODE {
 		// TODO: preemptive fixation --> about to get into a node that has t-1 keys --> if sibling has t keys then borrow/rotate, if not then merge
+
 	}
 
 	// if the node does not have the key, recurse to the next possible child
@@ -53,28 +54,39 @@ func (t *BTree) delete(node *Node, k uint16) {
 		return
 	}
 
-	// else, the node has the key, let's check for the different scenarios
-
-	// Case A: if it's a leaf and has t keys, delete
-	if node.isLeaf {
-		// TODO
-	}
-
+	// else, the node has the key, let's check for the different scenarios:
 	idx := slices.Index(node.keys, k)
 	switch {
-	// Case B: if it's an internal node, left child has t keys --> predecessor mechanism
-	case !node.isLeaf && len(node.children[idx-1].keys) > MIN_KEYS_PER_NODE:
-		// TODO
+	// Case A: if it's a leaf and has t keys --> delete
+	case node.isLeaf && len(node.keys) > MIN_KEYS_PER_NODE:
+		t.deleteKey(node, k)
 
-	// Case C: if it's an internal node && left child does not have t keys, right child does --> successor mechanism
+	// Case B: if it's an internal node and left child has t keys --> predecessor mechanism
 	case !node.isLeaf && len(node.children[idx].keys) > MIN_KEYS_PER_NODE:
-		// TODO
+		childKeys := node.children[idx].keys
+		predecessor := childKeys[len(childKeys)-1]
+		node.keys[idx] = predecessor
+		t.deleteKey(node.children[idx], predecessor)
 
-	// D. if it's an internal node, neither child has t keys --> perform merging of left, right and the key followed by removing the key
+	// Case C: if it's an internal node + left child does not have t keys + right child does --> successor mechanism
+	case !node.isLeaf && len(node.children[idx+1].keys) > MIN_KEYS_PER_NODE:
+		childKeys := node.children[idx+1].keys
+		successor := childKeys[0]
+		node.keys[idx] = successor
+		t.deleteKey(node.children[idx+1], successor)
+
+	// Case D: if it's an internal node + neither child has t keys --> perform merging of left, right and the key followed by removing the key
 	default:
-		// TODO
-
+		t.deleteKey(node, k)
+		node.children[idx].keys = append(node.children[idx].keys, node.children[idx+1].keys...)
+		node.children[idx+1] = nil
 	}
+}
+
+func (t *BTree) deleteKey(node *Node, k uint16) {
+	idx := slices.Index(node.keys, k)
+	copy(node.keys[idx:], node.keys[idx+1:])
+	node.keys = node.keys[:len(node.keys)-1]
 }
 
 func (t *BTree) Search(k uint16) bool {
@@ -273,5 +285,11 @@ func main() {
 		root: NewNode(true, nil),
 	}
 	mockInsert(tree)
+	tree.Print()
+	fmt.Println()
+
+	tree.Delete(6)
+
+	fmt.Println()
 	tree.Print()
 }

@@ -3,7 +3,7 @@ package main
 func mockInsert(tree *BTree) {
 	tree.Insert(20)
 	tree.Insert(10)
-	tree.Insert(11)
+	tree.Insert(12)
 	tree.Insert(24)
 	tree.Insert(6)
 	tree.Insert(28)
