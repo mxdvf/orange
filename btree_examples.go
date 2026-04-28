@@ -28,4 +28,7 @@ func mockInsert(tree *BTree) {
 	tree.Insert(108)
 	tree.Insert(110)
 	tree.Insert(105)
+	tree.Insert(33)
+	tree.Insert(34)
+	tree.Insert(35)
 }

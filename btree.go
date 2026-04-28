@@ -25,6 +25,8 @@ func New(degree int) *BTree {
 func (t *BTree) Insert(k uint16) {
 	if len(t.root.keys) == 2*t.degree-1 {
 		t.root = t.splitRoot()
+		// TODO: instead of creating a new root node, you should keep the old one intact, add two children and just swap them out
+		// in this way you don't need to even check for the root separately, it would just work using t.insertInSubtree
 		t.insertInSubtree(t.root, k)
 	} else {
 		t.insertInSubtree(t.root, k)
@@ -42,18 +44,18 @@ func (t *BTree) createNode(isLeaf bool) *Node {
 }
 
 func (t *BTree) splitRoot() *Node {
-	// create a new root
+	// Create a new root
 	newRoot := t.createNode(false)
-	// new root stores the median key
+	// New root stores the median key
 	median := len(t.root.keys) / 2
 	newRoot.keys = append(newRoot.keys, t.root.keys[median])
-	// setup new child nodes
+	// Setup new child nodes
 	left, right := t.createNode(t.root.isLeaf), t.createNode(t.root.isLeaf)
 	left.keys = append(left.keys, t.root.keys[:median]...)
 	right.keys = append(right.keys, t.root.keys[median+1:]...)
-	// append children of old root to new root
+	// Append children of old root to new root
 	newRoot.children = append(newRoot.children, left, right)
-	// if the root is not a leaf, then we must reattach
+	// If the root is not a leaf, then we must reattach
 	// the children of old root to the new root
 	if !t.root.isLeaf {
 		left.children = append([]*Node(nil), t.root.children[:median+1]...)
@@ -63,25 +65,25 @@ func (t *BTree) splitRoot() *Node {
 }
 
 func (t *BTree) split(node *Node, idx int) {
-	// setup
+	// Setup
 	parent := node
 	oldChild := node.children[idx]
-	// fetch child's median key
+	// Fetch child's median key
 	median := len(oldChild.keys) / 2
 	t.insertInNode(parent, oldChild.keys[median])
-	// setup a new child node aka sibling for the split
+	// Setup a new child node aka sibling for the split
 	newChild := t.createNode(oldChild.isLeaf)
-	// add the keys to the new child
+	// Add the keys to the new child
 	t.insertInNode(newChild, oldChild.keys[median+1:]...)
-	// remove the keys from old child
+	// Remove the keys from old child
 	oldChild.keys = oldChild.keys[:median]
-	// reattach the new child to its parent
+	// Reattach the new child to its parent
 	parent.children = append(parent.children, nil)
 	if idx+1 <= len(parent.children)-1 {
 		copy(parent.children[idx+2:], parent.children[idx+1:])
 		parent.children[idx+1] = newChild
 	}
-	// if the child was an internal node, redistribute the old child and new child amongst themselves
+	// If the child was an internal node, redistribute the old child and new child amongst themselves
 	if !newChild.isLeaf {
 		newChild.children = append([]*Node(nil), oldChild.children[median+1:]...)
 		oldChild.children = oldChild.children[:median+1]
@@ -136,6 +138,219 @@ func (t *BTree) Search(k uint16) bool {
 	return false
 }
 
+func (t *BTree) Delete(k uint16) {
+	t.delete(t.root, k)
+}
+
+func (t *BTree) delete(node *Node, k uint16) {
+	// Case A: preemptively fix when `node` is an internal node
+	// 1. Don't need separate logic when `node` is leaf because this does it anyway
+	// 2. Should make sure any node that is manipulated has enough keys
+	if !node.isLeaf {
+		idx := calculateAppropriateIdx(node.keys, k) // TODO: what's the difference between k < X and k <= X inside this function
+		fmt.Println("konsi key chal rhi hai bhai", node.keys, k)
+
+		// Perform a fix if the next appropriate child has less keys
+		if !slices.Contains(node.keys, k) && len(node.children[idx].keys) <= t.degree-1 {
+			fmt.Println("aaye ho meri zindagi mein tum bahar bann ke", node.children[idx].keys)
+			t.rotateOrMerge(node, idx) // TODO: edge case -- `node` is root + a merge happens = root should point to the new root
+		}
+
+		if slices.Contains(node.keys, k) {
+			t.deleteFromInternalNode(node, k)
+			return
+		}
+
+		if !slices.Contains(node.keys, k) {
+			// Since this node doesn't have keys, recurse
+			idx = calculateAppropriateIdx(node.keys, k)
+			t.delete(node.children[idx], k)
+			return
+		}
+	}
+
+	// Case B: internal node contains the key
+	// 1. Okay to assume it won't have less keys because of the preemptive fix
+	// 2. It's guaranteed to have the key due to the recursive nature
+	if slices.Contains(node.keys, k) && !node.isLeaf {
+		t.deleteFromInternalNode(node, k)
+		return
+	}
+
+	// Case C: leaf node contains the key
+	if slices.Contains(node.keys, k) && node.isLeaf {
+		t.deleteFromLeafNode(node, k)
+		return
+	}
+}
+
+func (t *BTree) rotateOrMerge(node *Node, idx int) {
+	// Setup
+	parent := node
+	child := parent.children[idx]
+
+	// Left sibling exists and has enough keys for a rotation
+	if idx-1 >= 0 && len(parent.children[idx-1].keys) > t.degree-1 {
+		leftSibling := parent.children[idx-1]
+		fmt.Println("LEFT SIBLING KISKA AUR KON HAI BHAIIII", leftSibling.keys, idx-1, parent.keys, child.keys, idx)
+
+		// Get the predecessor and remove it
+		keys := leftSibling.keys
+		predecessor := keys[len(keys)-1]
+		leftSibling.keys = keys[:len(keys)-1]
+
+		// Get the parent key and replace it with the predecessor
+		parentKey := parent.keys[idx-1]
+		parent.keys[idx-1] = predecessor
+
+		// Add the parent key in the child node
+		child.keys = append([]uint16{parentKey}, child.keys...)
+
+		if !leftSibling.isLeaf {
+			// Add the children of left sibling to the right sibling ONLY IN CASE OF INTERNAL NODES
+			unstableChildren := leftSibling.children[len(leftSibling.children)-1]
+			child.children = append([]*Node{unstableChildren}, child.children...)
+			leftSibling.children = leftSibling.children[:len(leftSibling.children)-1]
+		}
+		fmt.Println("aftermath?", leftSibling.keys, idx-1, parent.keys, child.keys, idx)
+		return
+	}
+
+	// Right sibling exists and has enough keys for a rotation
+	if idx+1 <= len(parent.children)-1 && len(parent.children[idx+1].keys) > t.degree-1 {
+		rightSibling := parent.children[idx+1]
+
+		// Get the successor and remove it
+		keys := rightSibling.keys
+		successor := keys[0]
+		rightSibling.keys = keys[1:]
+
+		// Get the parent key and replace it with the predecessor
+		parentKey := parent.keys[idx]
+		parent.keys[idx] = successor
+
+		// Add the parent key in the child node
+		child.keys = append(child.keys, parentKey)
+
+		if !rightSibling.isLeaf {
+			// Add the children of right sibling to the left sibling
+			unstableChildren := rightSibling.children[0]
+			child.children = append(child.children, unstableChildren)
+			rightSibling.children = rightSibling.children[1:]
+		}
+		return
+	}
+
+	fmt.Println("let's see if it reaches here", parent.keys, child.keys, idx)
+
+	// Perform a merge of the parent, the child and one of its sibling. Always
+	// attempt to use left sibling first
+	if idx-1 >= 0 {
+		siblingNode := parent.children[idx-1]
+
+		// Set the parent key in the sibling
+		parentKey := parent.keys[idx-1]
+		siblingNode.keys = append(siblingNode.keys, parentKey)
+
+		// Set the child keys in the sibling
+		childKeys := parent.children[idx].keys
+		siblingNode.keys = append(siblingNode.keys, childKeys...)
+
+		// Set the child's children to the sibling
+		siblingNode.children = append(siblingNode.children, child.children...)
+
+		// Shift left the other children (aka child's siblings) of the parent
+		parent.children[idx] = nil
+		copy(parent.children[idx:], parent.children[idx+1:])
+		parent.children = parent.children[:len(parent.children)-1]
+
+		// Remove the key from the parent
+		copy(parent.keys[idx-1:], parent.keys[idx:])
+		parent.keys = parent.keys[:len(parent.keys)-1]
+		return
+	}
+
+	// When left sibling DNE, attempt right
+	if idx+1 <= len(parent.children)-1 {
+		siblingNode := parent.children[idx+1]
+
+		// Set the parent in the sibling
+		parentKey := parent.keys[idx]
+		siblingNode.keys = append([]uint16{parentKey}, siblingNode.keys...)
+
+		// Set the child keys in the sibling
+		childKeys := parent.children[idx].keys
+		siblingNode.keys = append(childKeys, siblingNode.keys...)
+
+		// Set the child's children to the sibling
+		siblingNode.children = append(child.children, siblingNode.children...)
+
+		// Shift left the other children (aka child's siblings) of the parent
+		parent.children[idx] = nil
+		copy(parent.children[idx:], parent.children[idx+1:]) // TODO: extremely fishy???? how can it be same as above case
+		parent.children = parent.children[:len(parent.children)-1]
+
+		// Remove the key from the parent
+		copy(parent.keys[idx-1:], parent.keys[idx:]) // TODO: extremely fishy???? how can it be same as above case
+		parent.keys = parent.keys[:len(parent.keys)-1]
+		return
+	}
+}
+
+func (t *BTree) deleteFromLeafNode(node *Node, k uint16) {
+	idx := slices.Index(node.keys, k)
+	node.keys[idx] = node.keys[len(node.keys)-1]
+	node.keys = node.keys[:len(node.keys)-1]
+	slices.Sort(node.keys)
+}
+
+func (t *BTree) deleteFromInternalNode(node *Node, k uint16) {
+	// We first retrieve the appropriate position in the key space
+	// to check for left and right child
+	idx := slices.Index(node.keys, k)
+
+	fmt.Println("abhi maza aayega na bidhooooooo, PEHLE HI KAAM KHATAM KARDO", node.keys, k)
+	fmt.Println()
+	t.Print()
+	fmt.Println()
+
+	// Case B1: predecessor mechanism
+	leftChild := node.children[idx]
+	if leftChild != nil && len(leftChild.keys) > t.degree-1 {
+		maxKey := leftChild.keys[len(leftChild.keys)-1]
+		node.keys[idx] = maxKey
+		leftChild.keys = leftChild.keys[:len(leftChild.keys)-1]
+		return
+	}
+
+	// Case B2: successor mechanism
+	rightChild := node.children[idx+1]
+	if rightChild != nil && len(rightChild.keys) > t.degree-1 {
+		minKey := rightChild.keys[0]
+		node.keys[idx] = minKey
+		rightChild.keys = rightChild.keys[1:]
+		return
+	}
+
+	// Case B3: combining
+	fmt.Println("jhol??", k, idx)
+	// add keys from right child to the left child and ignore parent because
+	// it anyways needs to be removed at the end
+	leftChild.keys = append(leftChild.keys, rightChild.keys...)
+
+	// remove the key from parent
+	copy(node.keys[idx:], node.keys[idx+1:])
+	node.keys = node.keys[:len(node.keys)-1]
+
+	// delete the right child and shift left all children
+	node.children[idx+1] = nil
+	copy(node.children[idx+1:], node.children[idx+2:])
+	node.children = node.children[:len(node.children)-1]
+
+	// transfer all children of (deleted) right child over to the (preserved) left child
+	leftChild.children = append(leftChild.children, rightChild.children...)
+}
+
 func (tree *BTree) Print() {
 	queue := []*Node{tree.root}
 	level := 0
@@ -149,7 +364,8 @@ func (tree *BTree) Print() {
 				fmt.Printf(" %v ", k)
 			}
 			fmt.Print("]")
-			for _, c := range node.children {
+			for i, c := range node.children {
+				fmt.Printf(" {%d:%v} ", i, len(c.keys))
 				if c != nil {
 					queue = append(queue, c)
 				}
@@ -165,85 +381,63 @@ func main() {
 	tree := New(2)
 	mockInsert(tree)
 	tree.Print()
+	fmt.Println()
+
+	// FAILED: for a perfect delete, first a preemptive fix happens that brings 48 with 92 and replaces 49 with 33
+	// along with 33's right children into left children of 48
+	// now delete happens that performs a simple borrow from
+	tree.Delete(92)
+	tree.Print()
+	fmt.Println()
+	fmt.Println()
+
+	tree.Delete(102)
+	tree.Print()
+	fmt.Println()
+	fmt.Println("------")
+
+	tree.Delete(105)
+	tree.Print()
+	fmt.Println()
+	fmt.Println()
+
+	tree.Delete(100)
+	tree.Print()
+	fmt.Println()
+	fmt.Println()
+
+	// tree.Delete(32)
+	// tree.Print()
+	// fmt.Println()
+	// fmt.Println()
+
+	// tree.Delete(104)
+	// tree.Print()
+	// fmt.Println()
+	// fmt.Println()
+
+	// tree.Delete(90) // TEST CASE FAILED: reason being that during preemption, 90 should be filled with 100 and 102 should come up
+	// tree.Print()
+	// fmt.Println()
+	// fmt.Println()
+
+	// tree.Delete(107)
+	// tree.Print()
+	// fmt.Println()
+	// fmt.Println()
+
+	// tree.Delete(90)
+	// tree.Print()
+	// fmt.Println()
+	// fmt.Println()
+
+	// tree.Delete(31)
+	// tree.Print()
+	// fmt.Println()
+	// fmt.Println()
+
+	// LEFTOFF: at t.Delete(31), the merging is a bit messed up, my code and I are both confused which childs are to be picked up
+	// and which ones are to be used
+	// Also must think of when to execute preemptive strategy, if an internal node has the key, performing a strategy there seems to be a bit foolish because the internal
+	// node itself has its own mitigation strategies
 }
-
-// func (t *BTree) Delete(k uint16) {
-// 	node := t.root
-// 	t.delete(nil, node, k)
-// 	// TODO: assume root is all good yeah
-// }
-
-// func (t *BTree) delete(parent, node *Node, k uint16) {
-// 	// we preemptively fix this node = we're about to get into a node which has t-1 keys,
-// 	// before we remove anything from it, we must first bring it to at least t keys to avoid
-// 	// complexive fixing after deletion
-// 	if parent != nil && len(node.keys) <= MIN_KEYS_PER_NODE {
-// 		idx := t.calculateAppropriateIdx(parent.keys, k)
-// 		// if left sibling has enough keys, perform rotation
-// 		if idx-1 >= 0 && len(parent.children[idx-1].keys) > MIN_KEYS_PER_NODE {
-// 		}
-
-// 		// if right sibling has enough keys, perform rotation
-// 		if idx+1 <= len(parent.children)-1 && len(parent.children[idx+1].keys) > MIN_KEYS_PER_NODE {
-// 		}
-
-// 		// peform merging
-// 	}
-
-// 	// if does not contain, recurse to next child
-// 	if !slices.Contains(node.keys, k) {
-// 		idx := t.calculateAppropriateIdx(node.keys, k)
-// 		t.delete(node, node.children[idx], k)
-// 		return
-// 	}
-// }
-
-// func (t *BTree) delete(parent, node *Node, k uint16) {
-//
-// 	if parent != nil && len(node.keys) <= MIN_KEYS_PER_NODE {
-// 		// check if left sibling has t keys
-// 		// check if right sibling has t keys
-// 		// merge
-// 	}
-
-// 	// if the node does not have the key, recurse to the next possible child
-// 	if !slices.Contains(node.keys, k) {
-// 		// idx := t.calculateAppropriateIdx(node.keys, k)
-// 		// t.delete(node.children[idx], k)
-// 		return
-// 	}
-
-// 	// else, the node has the key, let's check for the different scenarios:
-// 	idx := slices.Index(node.keys, k)
-// 	switch {
-// 	// Case A: if it's a leaf and has t keys --> delete
-// 	case node.isLeaf && len(node.keys) > MIN_KEYS_PER_NODE:
-// 		t.deleteKey(node, k)
-
-// 	// Case B: if it's an internal node and left child has t keys --> predecessor mechanism
-// 	case !node.isLeaf && len(node.children[idx].keys) > MIN_KEYS_PER_NODE:
-// 		childKeys := node.children[idx].keys
-// 		predecessor := childKeys[len(childKeys)-1]
-// 		node.keys[idx] = predecessor
-// 		t.deleteKey(node.children[idx], predecessor)
-
-// 	// Case C: if it's an internal node + left child does not have t keys + right child does --> successor mechanism
-// 	case !node.isLeaf && len(node.children[idx+1].keys) > MIN_KEYS_PER_NODE:
-// 		childKeys := node.children[idx+1].keys
-// 		successor := childKeys[0]
-// 		node.keys[idx] = successor
-// 		t.deleteKey(node.children[idx+1], successor)
-
-// 	// Case D: if it's an internal node + neither child has t keys --> perform merging of left, right and the key followed by removing the key
-// 	default:
-// 		t.deleteKey(node, k)
-// 		node.children[idx].keys = append(node.children[idx].keys, node.children[idx+1].keys...)
-// 		node.children[idx+1] = nil
-// 	}
-// }
-
-// func (t *BTree) deleteKey(node *Node, k uint16) {
-// 	idx := slices.Index(node.keys, k)
-// 	copy(node.keys[idx:], node.keys[idx+1:])
-// 	node.keys = node.keys[:len(node.keys)-1]
-// }
