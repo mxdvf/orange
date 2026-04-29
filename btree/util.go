@@ -1,4 +1,4 @@
-package main
+package btree
 
 // calculateAppropriateIdx returns the index in the sorted slice for
 // for which k < keys[idx], which means to find the appropriate position
