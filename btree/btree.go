@@ -28,10 +28,8 @@ func (t *BTree) Insert(k uint16) {
 		t.root = t.splitRoot()
 		// TODO: instead of creating a new root node, you should keep the old one intact, add two children and just swap them out
 		// in this way you don't need to even check for the root separately, it would just work using t.insertInSubtree
-		t.insertInSubtree(t.root, k)
-	} else {
-		t.insertInSubtree(t.root, k)
 	}
+	t.insertInSubtree(t.root, k)
 }
 
 func (t *BTree) createNode(isLeaf bool) *Node {
