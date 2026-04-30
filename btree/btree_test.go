@@ -2,6 +2,7 @@ package btree
 
 import (
 	"math/rand"
+	"strings"
 	"testing"
 )
 
@@ -83,47 +84,6 @@ func TestRandomStress(t *testing.T) {
 	}
 }
 
-// auditTreeProperties is a validator that checks if the invariants of
-// BTree are still maintained
-func auditTreeProperties(t *testing.T, tr *BTree) {
-	if tr.root == nil {
-		return
-	}
-
-	height := -1
-	var checkNode func(n *Node, currentDepth int)
-
-	checkNode = func(n *Node, currentDepth int) {
-		for i := 0; i < len(n.keys)-1; i++ {
-			if n.keys[i] > n.keys[i+1] {
-				// t.Logf("-------")
-				// tr.Print()
-				// t.Logf("-------")
-				t.Errorf("Keys not sorted in node: %v", n.keys)
-			}
-		}
-
-		if n.isLeaf {
-			if height == -1 {
-				height = currentDepth
-			} else if height != currentDepth {
-				t.Errorf("Tree is not balanced! Leaf found at depth %d, expected %d", currentDepth, height)
-			}
-			return
-		}
-
-		if len(n.children) != len(n.keys)+1 {
-			t.Errorf("Node has %d keys but %d children", len(n.keys), len(n.children))
-		}
-
-		for _, child := range n.children {
-			checkNode(child, currentDepth+1)
-		}
-	}
-
-	checkNode(tr.root, 0)
-}
-
 func TestChurn(t *testing.T) {
 	tr := New(3)
 	for i := 0; i < 1000; i++ {
@@ -146,7 +106,13 @@ func TestCustom(t *testing.T) {
 	}
 	t.Log(tr)
 
-	tr.Delete(108)
+	tr.Delete(5)
+	t.Log(tr)
+
+	tr.Delete(6)
+	t.Log(tr)
+
+	tr.Delete(12)
 	t.Log(tr)
 
 	// tr.Delete(100)
@@ -228,6 +194,124 @@ func TestCustom(t *testing.T) {
 	// node itself has its own mitigation strategies
 }
 
+func TestCriticalDelete1(t *testing.T) {
+	tr := New(2)
+
+	keys := []uint16{20, 10, 12, 24, 6, 31, 32, 18, 26, 25, 27, 2, 48, 1, 21, 22, 4,
+		5, 90, 92, 100, 102, 104, 107, 108, 110, 105, 33, 34, 35}
+	for _, key := range keys {
+		tr.Insert(key)
+	}
+
+	tr.Delete(105)
+	tr.Delete(107)
+	tr.Delete(90)
+	got := tr.String()
+
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString("Level 0:\n")
+	sb.WriteString("[ 12  24  48 ] {0:2}  {1:1}  {2:2}  {3:2} \n")
+	sb.WriteString("Level 1:\n")
+	sb.WriteString("[ 2  6 ] {0:1}  {1:2}  {2:1} [ 20 ] {0:1}  {1:2} [ 31  33 ] {0:3}  {1:1}  {2:2} [ 102  108 ] {0:2}  {1:1}  {2:1} \n")
+	sb.WriteString("Level 2:\n")
+	sb.WriteString("[ 1 ][ 4  5 ][ 10 ][ 18 ][ 21  22 ][ 25  26  27 ][ 32 ][ 34  35 ][ 92  100 ][ 104 ][ 110 ]\n")
+	want := sb.String()
+
+	if got != want {
+		t.Fatalf("mismatch:\n got:%s\n want: %s\n", got, want)
+	}
+}
+
+func TestCriticalDelete2(t *testing.T) {
+	tr := New(2)
+
+	keys := []uint16{20, 10, 12, 24, 6, 31, 32, 18, 26, 25, 27, 2, 48, 1, 21, 22, 4,
+		5, 90, 92, 100, 102, 104, 107, 108, 110, 105, 33, 34, 35}
+	for _, key := range keys {
+		tr.Insert(key)
+	}
+
+	tr.Delete(105)
+	tr.Delete(107)
+	got := tr.String()
+
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString("Level 0:\n")
+	sb.WriteString("[ 12  24  48 ] {0:2}  {1:1}  {2:2}  {3:3} \n")
+	sb.WriteString("Level 1:\n")
+	sb.WriteString("[ 2  6 ] {0:1}  {1:2}  {2:1} [ 20 ] {0:1}  {1:2} [ 31  33 ] {0:3}  {1:1}  {2:2} [ 92  102  108 ] {0:1}  {1:1}  {2:1}  {3:1} \n")
+	sb.WriteString("Level 2:\n")
+	sb.WriteString("[ 1 ][ 4  5 ][ 10 ][ 18 ][ 21  22 ][ 25  26  27 ][ 32 ][ 34  35 ][ 90 ][ 100 ][ 104 ][ 110 ]\n")
+	want := sb.String()
+
+	if got != want {
+		t.Fatalf("mismatch:\n got:%s\n want: %s\n", got, want)
+	}
+}
+
+func TestCriticalDelete3(t *testing.T) {
+	tr := New(2)
+
+	keys := []uint16{20, 10, 12, 24, 6, 31, 32, 18, 26, 25, 27, 2, 48, 1, 21, 22, 4,
+		5, 90, 92, 100, 102, 104, 107, 108, 110, 105, 33, 34, 35}
+	for _, key := range keys {
+		tr.Insert(key)
+	}
+
+	tr.Delete(5)
+	tr.Delete(6)
+	got := tr.String()
+
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString("Level 0:\n")
+	sb.WriteString("[ 48 ] {0:2}  {1:1} \n")
+	sb.WriteString("Level 1:\n")
+	sb.WriteString("[ 12  24 ] {0:1}  {1:1}  {2:2} [ 102 ] {0:1}  {1:1} \n")
+	sb.WriteString("Level 2:\n")
+	sb.WriteString("[ 2 ] {0:1}  {1:2} [ 20 ] {0:1}  {1:2} [ 31  33 ] {0:3}  {1:1}  {2:2} [ 92 ] {0:1}  {1:1} [ 107 ] {0:2}  {1:2} \n")
+	sb.WriteString("Level 3:\n")
+	sb.WriteString("[ 1 ][ 4  10 ][ 18 ][ 21  22 ][ 25  26  27 ][ 32 ][ 34  35 ][ 90 ][ 100 ][ 104  105 ][ 108  110 ]\n")
+	want := sb.String()
+
+	if got != want {
+		t.Fatalf("mismatch:\n got:%s\n want: %s\n", got, want)
+	}
+}
+
+func TestCriticalDelete4(t *testing.T) {
+	tr := New(2)
+
+	keys := []uint16{20, 10, 12, 24, 6, 31, 32, 18, 26, 25, 27, 2, 48, 1, 21, 22, 4,
+		5, 90, 92, 100, 102, 104, 107, 108, 110, 105, 33, 34, 35}
+	for _, key := range keys {
+		tr.Insert(key)
+	}
+
+	tr.Delete(5)
+	tr.Delete(6)
+	tr.Delete(12)
+	got := tr.String()
+
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString("Level 0:\n")
+	sb.WriteString("[ 48 ] {0:1}  {1:1} \n")
+	sb.WriteString("Level 1:\n")
+	sb.WriteString("[ 24 ] {0:3}  {1:2} [ 102 ] {0:1}  {1:1} \n")
+	sb.WriteString("Level 2:\n")
+	sb.WriteString("[ 2  10  20 ] {0:1}  {1:1}  {2:1}  {3:2} [ 31  33 ] {0:3}  {1:1}  {2:2} [ 92 ] {0:1}  {1:1} [ 107 ] {0:2}  {1:2} \n")
+	sb.WriteString("Level 3:\n")
+	sb.WriteString("[ 1 ][ 4 ][ 18 ][ 21  22 ][ 25  26  27 ][ 32 ][ 34  35 ][ 90 ][ 100 ][ 104  105 ][ 108  110 ]\n")
+	want := sb.String()
+
+	if got != want {
+		t.Fatalf("mismatch:\n got:%s\n want: %s\n", got, want)
+	}
+}
+
 func BenchmarkInsert(b *testing.B) {
 	tr := New(32) // Use a realistic degree
 	for i := 0; i < b.N; i++ {
@@ -261,4 +345,42 @@ func FuzzBTreeWithMinDegree(f *testing.F) {
 			t.Errorf("Could not find %d", key)
 		}
 	})
+}
+
+// auditTreeProperties is a validator that checks if the invariants of
+// BTree are still maintained
+func auditTreeProperties(t *testing.T, tr *BTree) {
+	if tr.root == nil {
+		return
+	}
+
+	height := -1
+	var checkNode func(n *Node, currentDepth int)
+
+	checkNode = func(n *Node, currentDepth int) {
+		for i := 0; i < len(n.keys)-1; i++ {
+			if n.keys[i] > n.keys[i+1] {
+				t.Errorf("Keys not sorted in node: %v", n.keys)
+			}
+		}
+
+		if n.isLeaf {
+			if height == -1 {
+				height = currentDepth
+			} else if height != currentDepth {
+				t.Errorf("Tree is not balanced! Leaf found at depth %d, expected %d", currentDepth, height)
+			}
+			return
+		}
+
+		if len(n.children) != len(n.keys)+1 {
+			t.Errorf("Node has %d keys but %d children", len(n.keys), len(n.children))
+		}
+
+		for _, child := range n.children {
+			checkNode(child, currentDepth+1)
+		}
+	}
+
+	checkNode(tr.root, 0)
 }

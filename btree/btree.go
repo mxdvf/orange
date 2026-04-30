@@ -33,8 +33,6 @@ func (t *BTree) Insert(k uint16) {
 }
 
 func (t *BTree) createNode(isLeaf bool) *Node {
-	// TODO: let's see maybe we can have 0 length for children also, otherwise revert back to old implementation
-	// would need to add more guardrails but at least there's no ambiguity
 	return &Node{
 		keys:     make([]uint16, 0, 2*t.degree-1),
 		children: make([]*Node, 0, 2*t.degree),
@@ -143,53 +141,40 @@ func (t *BTree) Delete(k uint16) {
 	if len(t.root.keys) == 0 && !t.root.isLeaf {
 		t.root = t.root.children[0]
 	}
-
 }
 
 func (t *BTree) delete(node *Node, k uint16) {
-	// Preemptive Fix: internal node and the possible child it might recurse into
+	// Preemptive Fix: fix the internal node it might recurse into
 	// 1. Either perform a left/right rotation using a sibling
 	// 2. Or combine the left/right sibling, parent and the node
-	if !node.isLeaf {
+	if !node.isLeaf && !slices.Contains(node.keys, k) {
 		idx := calculateAppropriateIdx(node.keys, k)
-		fmt.Println("abh kiski baari bhaiii", node.keys, node.children[idx].keys, k)
 		if len(node.children[idx].keys) <= t.degree-1 {
 			t.preemptiveFix(node, idx)
 		}
-	}
-	// Case A: internal node and it has the key (TODO: open this case condition only when you're damn sure)
-	// 1. Either perform a borrow if one of the child's sibling
-	// 2. Or perform a merge with left/right sibling and parent
-	// if !node.isLeaf && slices.Contains(node.keys, k) {
-	// 	didMergeHappen := t.deleteFromInternalNode(node, k)
-	// 	// If it was a merge, we must recurse into the next subtree
-	// 	if didMergeHappen {
-	// 		idx := calculateAppropriateIdx(node.keys, k)
-	// 		t.delete(node.children[idx], k)
-	// 	}
-	// 	// Otherwise the delete was successful
-	// 	return
-	// }
-	// Case B: internal node and it does not have the key
-	if !node.isLeaf && !slices.Contains(node.keys, k) {
 		// Simply recurse to the next appropriate subtree
-		idx := calculateAppropriateIdx(node.keys, k)
+		idx = calculateAppropriateIdx(node.keys, k)
 		t.delete(node.children[idx], k)
 		return
 	}
-	// Case C: leaf node and it has the key
+	// Case A: internal node and it has the key
+	// 1. If left/right immediate child have enough, borrow from "inorder predecessor/successor" (read about inorder, took 3 days to realise this)
+	// 2. If both immediate child don't have enougb keys, consolidate with the parent
+	if !node.isLeaf && slices.Contains(node.keys, k) {
+		subtree, keyToBeDeleted := t.deleteFromInternalNode(node, k)
+		t.delete(subtree, keyToBeDeleted)
+		return
+	}
+	// Case B: leaf node and it has the key
 	if node.isLeaf && slices.Contains(node.keys, k) {
 		t.deleteFromLeafNode(node, k)
 		return
 	}
-	// Case D: leaf node and it does not have the key
-	// In that case, key DNE so just exit
 }
 
 func (t *BTree) preemptiveFix(node *Node, idx int) {
 	parent := node
 	child := parent.children[idx]
-
 	// Preemptive Fix 1A: child's left sibling has enough space, so we right rotate
 	if idx-1 >= 0 && len(parent.children[idx-1].keys) > t.degree-1 {
 		t.preemptiveRightRotate(parent, child, idx)
@@ -209,6 +194,7 @@ func (t *BTree) preemptiveFix(node *Node, idx int) {
 	// Preemptive Fix 2B: merge the child with its right sibling and parent
 	if idx+1 <= len(parent.children)-1 {
 		t.preemptiveRightCombine(parent, child, idx)
+		return
 	}
 }
 
@@ -290,40 +276,72 @@ func (t *BTree) preemptiveRightCombine(parent, child *Node, idx int) {
 	}
 }
 
-func (t *BTree) deleteFromInternalNode(node *Node, k uint16) bool {
+func (t *BTree) deleteFromInternalNode(node *Node, k uint16) (*Node, uint16) {
 	idx := slices.Index(node.keys, k)
-	// If any of its child have enough space, perform a simple borrow
-	if len(node.children[idx].keys) > t.degree-1 || len(node.children[idx+1].keys) > t.degree-1 {
-		t.borrow(node, idx)
-		return false
+	// Case A1: If its immediate left child has enough space, perform a simple borrow
+	if len(node.children[idx].keys) > t.degree-1 {
+		predecessor := t.borrowFromInorderPredecessor(node, idx)
+		return node.children[idx], predecessor
 	}
-	// If its children don't have enough space, a merge is inevitable
-	t.merge(node, idx)
-	return true
+	// Case A2: If its immediate right child has enough space, perform a simple borrow
+	if len(node.children[idx+1].keys) > t.degree-1 {
+		successor := t.borrowFromInorderSuccessor(node, idx)
+		return node.children[idx+1], successor
+	}
+	// Case A3: If its children don't have enough space, a merge is inevitable
+	// newChild is the new child in which the key was inserted into, we capture this
+	// so we can get into it recursively in order to the delete the key `k`
+	newChild := t.merge(node, idx)
+	return newChild, k
 }
 
-func (t *BTree) borrow(node *Node, idx int) {
-	// Case A1: borrow predecessor
-	leftChild := node.children[idx]
-	if len(leftChild.keys) > t.degree-1 {
-		predecessor := leftChild.keys[len(leftChild.keys)-1]
-		node.keys[idx] = predecessor
-		leftChild.keys = leftChild.keys[:len(leftChild.keys)-1]
-		return
+func (t *BTree) borrowFromInorderPredecessor(node *Node, idx int) uint16 {
+	// Continously traverse the right subtree of the left child to find the maximum key
+	child := node.children[idx]
+	for !child.isLeaf {
+		child = child.children[len(child.children)-1]
 	}
-	// Case A2: borrow successor
-	rightChild := node.children[idx+1]
-	if len(rightChild.keys) > t.degree-1 {
-		successor := rightChild.keys[0]
-		node.keys[idx] = successor
-		rightChild.keys = rightChild.keys[1:]
-		return
-	}
+	// Fetch the predecessor
+	predecessor := child.keys[len(child.keys)-1]
+	// Replace parent's key `node.keys[idx]` with the predecessor
+	node.keys[idx] = predecessor
+	return predecessor
 }
 
-func (t *BTree) merge(node *Node, idx int) {
+func (t *BTree) borrowFromInorderSuccessor(node *Node, idx int) uint16 {
+	// Continously traverse the left subtree of the right child to find the minimum key
+	child := node.children[idx+1]
+	for !child.isLeaf {
+		child = child.children[0]
+	}
+	// Fetch the successor (aka minimum key)
+	successor := child.keys[0]
+	// Replace parent's key `node.keys[idx]` with the predecessor
+	node.keys[idx] = successor
+	return successor
+}
+
+func (t *BTree) merge(node *Node, idx int) *Node {
 	// Case A3: merging with children
-	// TODO
+	parent := node
+	leftChild := node.children[idx]
+	rightChild := node.children[idx+1]
+	// Append the keys of the parent and the right child into the left child
+	parentKey := parent.keys[idx]
+	leftChild.keys = append(leftChild.keys, parentKey)
+	leftChild.keys = append(leftChild.keys, rightChild.keys...)
+	// Remove the appropriate key from the parent
+	copy(parent.keys[idx:], parent.keys[idx+1:])
+	parent.keys = parent.keys[:len(parent.keys)-1]
+	// Remove the right child
+	copy(parent.children[idx+1:], parent.children[idx+2:])
+	parent.children = parent.children[:len(parent.children)-1]
+	// If the child is not a leaf, shift all children of the right child to the left child
+	if !leftChild.isLeaf {
+		leftChild.children = append(leftChild.children, rightChild.children...)
+	}
+	// Return the subtree root (child) in which the fittings happened
+	return node.children[idx]
 }
 
 func (t *BTree) deleteFromLeafNode(node *Node, k uint16) {
