@@ -24,6 +24,11 @@ func New(degree int) *BTree {
 }
 
 func (t *BTree) Insert(k uint16) {
+	// TODO: get rid of this search and somehow incorporate logic within insert itself, write becomes freakingly slow
+	if t.Search(k) {
+		return
+	}
+
 	if len(t.root.keys) == 2*t.degree-1 {
 		t.root = t.splitRoot()
 		// TODO: instead of creating a new root node, you should keep the old one intact, add two children and just swap them out

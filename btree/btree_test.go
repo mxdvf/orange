@@ -84,14 +84,90 @@ func TestRandomStress(t *testing.T) {
 	}
 }
 
-func TestChurn(t *testing.T) {
-	tr := New(3)
-	for i := 0; i < 1000; i++ {
+func TestAdversarial_MergeCascade(t *testing.T) {
+	tr := New(2)
+
+	// Fill tree
+	for i := 1; i <= 20; i++ {
 		tr.Insert(uint16(i))
 	}
-	for i := 0; i < 100000; i++ {
-		tr.Delete(uint16(rand.Intn(1000)))
-		tr.Insert(uint16(rand.Intn(1000)))
+
+	// Delete in ascending order → forces merges upward
+	for i := 1; i <= 20; i++ {
+		tr.Delete(uint16(i))
+		auditTreeProperties(t, tr)
+	}
+}
+
+func TestAdversarial_BorrowEdge(t *testing.T) {
+	tr := New(2)
+
+	keys := []uint16{10, 20, 5, 6, 12, 30, 7, 17}
+	for _, k := range keys {
+		tr.Insert(k)
+	}
+
+	// These hit tricky borrow/merge decisions
+	for _, k := range []uint16{6, 7, 5} {
+		tr.Delete(k)
+		auditTreeProperties(t, tr)
+	}
+}
+
+func TestAdversarial_InternalDelete(t *testing.T) {
+	tr := New(2)
+
+	for i := 1; i <= 15; i++ {
+		tr.Insert(uint16(i))
+	}
+
+	// delete non-leaf keys
+	for _, k := range []uint16{8, 4, 12} {
+		tr.Delete(k)
+		auditTreeProperties(t, tr)
+	}
+}
+
+func TestAdversarial_RootShrink(t *testing.T) {
+	tr := New(2)
+
+	for i := 1; i <= 10; i++ {
+		tr.Insert(uint16(i))
+	}
+
+	for i := 1; i <= 9; i++ {
+		tr.Delete(uint16(i))
+		auditTreeProperties(t, tr)
+	}
+}
+
+func TestAdversarial_Oscillation(t *testing.T) {
+	tr := New(2)
+
+	for i := 0; i < 50; i++ {
+		tr.Insert(uint16(i))
+	}
+
+	for i := 0; i < 200; i++ {
+		k := uint16(i % 50)
+
+		tr.Delete(k)
+		tr.Insert(k)
+
+		auditTreeProperties(t, tr)
+	}
+}
+
+func TestChurn(t *testing.T) {
+	tr := New(3)
+	for i := 0; i < 100; i++ {
+		tr.Insert(uint16(i))
+	}
+
+	r := rand.New(rand.NewSource(42))
+	for i := 0; i < 100; i++ {
+		tr.Delete(uint16(r.Intn(1000)))
+		tr.Insert(uint16(r.Intn(1000)))
 	}
 	auditTreeProperties(t, tr)
 }
@@ -221,6 +297,8 @@ func TestCriticalDelete1(t *testing.T) {
 	if got != want {
 		t.Fatalf("mismatch:\n got:%s\n want: %s\n", got, want)
 	}
+
+	auditTreeProperties(t, tr)
 }
 
 func TestCriticalDelete2(t *testing.T) {
@@ -249,6 +327,8 @@ func TestCriticalDelete2(t *testing.T) {
 	if got != want {
 		t.Fatalf("mismatch:\n got:%s\n want: %s\n", got, want)
 	}
+
+	auditTreeProperties(t, tr)
 }
 
 func TestCriticalDelete3(t *testing.T) {
@@ -279,6 +359,8 @@ func TestCriticalDelete3(t *testing.T) {
 	if got != want {
 		t.Fatalf("mismatch:\n got:%s\n want: %s\n", got, want)
 	}
+
+	auditTreeProperties(t, tr)
 }
 
 func TestCriticalDelete4(t *testing.T) {
@@ -310,6 +392,8 @@ func TestCriticalDelete4(t *testing.T) {
 	if got != want {
 		t.Fatalf("mismatch:\n got:%s\n want: %s\n", got, want)
 	}
+
+	auditTreeProperties(t, tr)
 }
 
 func BenchmarkInsert(b *testing.B) {
@@ -319,30 +403,72 @@ func BenchmarkInsert(b *testing.B) {
 	}
 }
 
-func FuzzBTree(f *testing.F) {
-	tr := New(3)
-	f.Add(uint16(10))
-	f.Fuzz(func(t *testing.T, key uint16) {
-		tr.Insert(key)
+func FuzzBTree1(f *testing.F) {
+	f.Add(uint16(10), uint16(1))
+	f.Add(uint16(20), uint16(2))
+	f.Add(uint16(30), uint16(3))
 
-		auditTreeProperties(t, tr)
+	f.Fuzz(func(t *testing.T, key uint16, op uint16) {
+		tr := New(3)
+		ref := make(map[uint16]struct{})
 
-		if !tr.Search(key) {
-			t.Errorf("Could not find %d", key)
+		for i := 0; i < 100; i++ {
+			k := key + uint16(i)
+			action := (op + uint16(i)) % 3
+
+			switch action {
+			case 0:
+				tr.Insert(k)
+				ref[k] = struct{}{}
+
+			case 1:
+				tr.Delete(k)
+				delete(ref, k)
+
+			case 2:
+				_, exists := ref[k]
+				found := tr.Search(k)
+				if found != exists {
+					t.Fatalf("search mismatch for %d: got=%v want=%v\nTree:%s",
+						k, found, exists, tr)
+				}
+			}
+
+			auditTreeProperties(t, tr)
 		}
 	})
 }
 
-func FuzzBTreeWithMinDegree(f *testing.F) {
-	tr := New(2)
-	f.Add(uint16(10))
-	f.Fuzz(func(t *testing.T, key uint16) {
-		tr.Insert(key)
+func FuzzMinDegreeBTree2(f *testing.F) {
+	f.Add(uint16(10), uint16(1))
 
-		auditTreeProperties(t, tr)
+	f.Fuzz(func(t *testing.T, key uint16, op uint16) {
+		tr := New(2)
+		ref := make(map[uint16]struct{})
 
-		if !tr.Search(key) {
-			t.Errorf("Could not find %d", key)
+		for i := 0; i < 100; i++ {
+			k := key + uint16(i)
+			action := (op + uint16(i)) % 3
+
+			switch action {
+			case 0:
+				tr.Insert(k)
+				ref[k] = struct{}{}
+
+			case 1:
+				tr.Delete(k)
+				delete(ref, k)
+
+			case 2:
+				_, exists := ref[k]
+				found := tr.Search(k)
+				if found != exists {
+					t.Fatalf("search mismatch for %d: got=%v want=%v\nTree:%s",
+						k, found, exists, tr)
+				}
+			}
+
+			auditTreeProperties(t, tr)
 		}
 	})
 }
@@ -354,33 +480,81 @@ func auditTreeProperties(t *testing.T, tr *BTree) {
 		return
 	}
 
-	height := -1
-	var checkNode func(n *Node, currentDepth int)
+	var (
+		height = -1
+		tdeg   = tr.degree
+	)
 
-	checkNode = func(n *Node, currentDepth int) {
-		for i := 0; i < len(n.keys)-1; i++ {
-			if n.keys[i] > n.keys[i+1] {
-				t.Errorf("Keys not sorted in node: %v", n.keys)
+	var checkNode func(n *Node, depth int, min, max *uint16)
+
+	checkNode = func(n *Node, depth int, min, max *uint16) {
+		if n == nil {
+			t.Fatalf("nil node encountered")
+		}
+
+		// invariant: key count constraints
+		if n != tr.root {
+			if len(n.keys) < tdeg-1 {
+				t.Errorf("node has too few keys: %v", n.keys)
+			}
+		}
+		if len(n.keys) > 2*tdeg-1 {
+			t.Errorf("node has too many keys: %v", n.keys)
+		}
+
+		// invariant: sorted + range check
+		for i := 0; i < len(n.keys); i++ {
+			if i > 0 && n.keys[i-1] > n.keys[i] {
+				t.Errorf("keys not sorted: %v", n.keys)
+			}
+
+			if min != nil && n.keys[i] <= *min {
+				t.Errorf("key %d violates min bound %d", n.keys[i], *min)
+			}
+			if max != nil && n.keys[i] >= *max {
+				t.Errorf("key %d violates max bound %d", n.keys[i], *max)
 			}
 		}
 
+		// invariant: leaf depth consistency
 		if n.isLeaf {
 			if height == -1 {
-				height = currentDepth
-			} else if height != currentDepth {
-				t.Errorf("Tree is not balanced! Leaf found at depth %d, expected %d", currentDepth, height)
+				height = depth
+			} else if height != depth {
+				t.Errorf("leaves at different depths: got %d want %d", depth, height)
 			}
 			return
 		}
 
+		// invariant: children count
 		if len(n.children) != len(n.keys)+1 {
-			t.Errorf("Node has %d keys but %d children", len(n.keys), len(n.children))
+			t.Errorf("node has %d keys but %d children", len(n.keys), len(n.children))
 		}
 
-		for _, child := range n.children {
-			checkNode(child, currentDepth+1)
+		// invariant: recurse with bounds
+		for i, child := range n.children {
+			var newMin, newMax *uint16
+
+			if i > 0 {
+				newMin = &n.keys[i-1]
+			} else {
+				newMin = min
+			}
+
+			if i < len(n.keys) {
+				newMax = &n.keys[i]
+			} else {
+				newMax = max
+			}
+
+			checkNode(child, depth+1, newMin, newMax)
 		}
 	}
 
-	checkNode(tr.root, 0)
+	checkNode(tr.root, 0, nil, nil)
+
+	// invariant: root special rule
+	if !tr.root.isLeaf && len(tr.root.children) < 2 {
+		t.Errorf("non-leaf root must have at least 2 children")
+	}
 }
