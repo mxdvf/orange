@@ -285,11 +285,11 @@ func (t *BTree) Delete(k []byte) error {
 }
 
 func (t *BTree) delete(node *Node, k []byte) (uint32, error) {
-	// if node.getType() == NodeTypeInternal {
-	// 	if err := t.preemptiveDeleteFix(node, k); err != nil {
-	// 		return 0, err
-	// 	}
-	// }
+	if node.getType() == NodeTypeInternal {
+		if err := t.fillChild(node, k); err != nil {
+			return 0, err
+		}
+	}
 	switch node.getType() {
 	case NodeTypeLeaf:
 		return t.deleteFromLeaf(node, k)
@@ -326,7 +326,9 @@ func (t *BTree) deleteFromInternal(node *Node, k []byte) (uint32, error) {
 	if idx < node.getNKeys() {
 		existingKey, _ := node.getKV(idx)
 		if bytes.Equal(existingKey, k) {
-			return t.deleteKeyFromInternal(node, k, idx)
+
+			panic("can not reach here just for now, for sake of testing")
+			// return t.deleteKeyFromInternal(node, k, idx)
 		}
 	}
 	// key is not in this node, recurse into appropriate child
@@ -343,73 +345,176 @@ func (t *BTree) deleteFromInternal(node *Node, k []byte) (uint32, error) {
 	return t.copyToNewPage(node)
 }
 
-func (t *BTree) deleteKeyFromInternal(node *Node, k []byte, idx uint16) (uint32, error) {
-	// case A1: borrow inorder predecessor from left child
-	leftChildNode, err := t.loadAsNode(node.getPtr(idx))
+func (t *BTree) fillChild(node *Node, k []byte) error {
+	idx := node.findIndex(k)
+	childNode, err := t.loadAsNode(node.getPtr(idx))
 	if err != nil {
-		return 0, err
+		return fmt.Errorf("could not load child node: %w", err)
 	}
-	if !leftChildNode.underflow() {
-		return t.borrowFromInorderPredecessor(node, leftChildNode, idx)
+	// child is not underflowing, no fix needed
+	if !childNode.underflow() {
+		return nil
 	}
-	// case A2: borrow inorder successor from right child
-	rightChildNode, err := t.loadAsNode(node.getPtr(idx + 1))
-	if err != nil {
-		return 0, err
+	// try left sibling rotation first
+	if idx > 0 {
+		leftSibling, err := t.loadAsNode(node.getPtr(idx - 1))
+		if err != nil {
+			return fmt.Errorf("could not load left sibling: %w", err)
+		}
+		if !leftSibling.underflow() {
+			return t.rotateRight(node, leftSibling, childNode, idx)
+		}
 	}
-	if !rightChildNode.underflow() {
-		return t.borrowFromInorderSuccessor(node, rightChildNode, idx)
+	// try right sibling rotation
+	if idx < node.getNKeys() {
+		rightSibling, err := t.loadAsNode(node.getPtr(idx + 1))
+		if err != nil {
+			return fmt.Errorf("could not load right sibling: %w", err)
+		}
+		if !rightSibling.underflow() {
+			return t.rotateLeft(node, childNode, rightSibling, idx)
+		}
 	}
-	// // // case A3: both children underflowing, merge and delete
-	// // if err := t.mergeChildren(node, idx); err != nil {
-	// // 	return 0, err
-	// // }
-	// recurse after merging
-	return t.delete(node, k)
+	// no rotation possible, merge
+	// if idx > 0 {
+	// 	return t.mergeChildren(node, idx-1)
+	// }
+	// return t.mergeChildren(node, idx)
+	panic("should not reach here for the sake of testing")
 }
 
-func (t *BTree) borrowFromInorderPredecessor(node, leftChildNode *Node, idx uint16) (uint32, error) {
-	// helper that iteratively finds the predecessor
-	inorderPredecessor := func(node *Node) ([]byte, []byte) {
-		for node.getType() != NodeTypeLeaf {
-			pageNum := node.getPtr(node.getNKeys())
-			node, _ = t.loadAsNode(pageNum)
-		}
-		k, v := node.getKV(node.getNKeys() - 1)
-		return k, v
+func (t *BTree) rotateRight(parent, leftSibling, child *Node, idx uint16) error {
+	// borrow last key from left sibling
+	borrowedKey, borrowedVal := leftSibling.getKV(leftSibling.getNKeys() - 1)
+	// get the parent separator key (sits at idx-1 between left sibling and child)
+	parentKey, parentVal := parent.getKV(idx - 1)
+	// push parent key down into child at position 0
+	child.insertKV(parentKey, parentVal)
+	// if left sibling is internal, transfer its rightmost child pointer to child
+	if leftSibling.getType() == NodeTypeInternal {
+		danglingPtr := leftSibling.getPtr(leftSibling.getNKeys())
+		child.setPtr(0, danglingPtr)
 	}
-	// use the predecessor kv pair
-	predecessor, _ := inorderPredecessor(leftChildNode)
-	// and replace it with the node's kv at idx
-	// node.updateKV(idx, predecessor, predVal) TODO: fix this next
-	// also get rid of the predecessor here itself
-	newLeftPageNum, err := t.delete(leftChildNode, predecessor)
+	// replace parent separator with borrowed key
+	parent.updateKV(idx-1, borrowedKey, borrowedVal) // TODO: since you're deleting and re-inserting, pointers are bound to get lost, how will you solve them? see the bottom setPtr maybe that helps
+	// remove last key from left sibling
+	danglingPtr := leftSibling.getPtr(leftSibling.getNKeys() - 1) // TODO: write comments here because deleting this would cause the left ptr to go away (left shift) which is what we want to preserve
+	leftSibling.deleteKV(leftSibling.getNKeys() - 1)
+	leftSibling.setPtr(leftSibling.getNKeys(), danglingPtr)
+	// persist all three
+	leftPageNum, err := t.copyToNewPage(leftSibling)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	node.setPtr(idx, newLeftPageNum)
-	return t.copyToNewPage(node)
+	childPageNum, err := t.copyToNewPage(child)
+	if err != nil {
+		return err
+	}
+	parent.setPtr(idx-1, leftPageNum)
+	parent.setPtr(idx, childPageNum)
+	return nil
 }
 
-func (t *BTree) borrowFromInorderSuccessor(node, rightChildNode *Node, idx uint16) (uint32, error) {
-	// helper that iteratively finds the successor
-	inorderSuccessor := func(node *Node) ([]byte, []byte) {
-		for node.getType() != NodeTypeLeaf {
-			pageNum := node.getPtr(0)
-			node, _ = t.loadAsNode(pageNum)
-		}
-		k, v := node.getKV(0)
-		return k, v
+func (t *BTree) rotateLeft(parent, child, rightSibling *Node, idx uint16) error {
+	// borrow first key from right sibling
+	borrowedKey, borrowedVal := rightSibling.getKV(0)
+	// get the parent separator key (sits at idx between child and right sibling)
+	parentKey, parentVal := parent.getKV(idx)
+	// push parent key down into child at the end
+	danglingPtr := child.getPtr(child.getNKeys())
+	child.insertKV(parentKey, parentVal) // TODO: write comments, since parent key would be at end, it creates a new pointer space to its left, so we must preserve the ptr at the very end
+	child.setPtr(child.getNKeys()-1, danglingPtr)
+
+	// if right sibling is internal, transfer its leftmost child pointer to child
+	if rightSibling.getType() == NodeTypeInternal {
+		danglingPtr := rightSibling.getPtr(0)
+		child.setPtr(child.getNKeys(), danglingPtr)
 	}
-	// use the successor kv pair
-	successor, _ := inorderSuccessor(rightChildNode)
-	// and replace it with the node's kv at idx
-	// node.updateKV(idx, successor, succVal) TODO: fix this next
-	// also get rid of the successor here itself
-	newRightPageNum, err := t.delete(rightChildNode, successor)
+	// replace parent separator with borrowed key
+	parent.updateKV(idx, borrowedKey, borrowedVal) // TODO: since you're deleting and re-inserting, pointers are bound to get lost, how will you solve them? see the bottom setPtr maybe that helps
+	// remove first key from right sibling
+	rightSibling.deleteKV(0)
+	// persist all three
+	childPageNum, err := t.copyToNewPage(child)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	node.setPtr(idx+1, newRightPageNum)
-	return t.copyToNewPage(node)
+	rightPageNum, err := t.copyToNewPage(rightSibling)
+	if err != nil {
+		return err
+	}
+	parent.setPtr(idx, childPageNum)
+	parent.setPtr(idx+1, rightPageNum)
+	return nil
 }
+
+// func (t *BTree) deleteKeyFromInternal(node *Node, k []byte, idx uint16) (uint32, error) {
+// 	// case A1: borrow inorder predecessor from left child
+// 	leftChildNode, err := t.loadAsNode(node.getPtr(idx))
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	if !leftChildNode.underflow() {
+// 		return t.borrowFromInorderPredecessor(node, leftChildNode, idx)
+// 	}
+// 	// case A2: borrow inorder successor from right child
+// 	rightChildNode, err := t.loadAsNode(node.getPtr(idx + 1))
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	if !rightChildNode.underflow() {
+// 		return t.borrowFromInorderSuccessor(node, rightChildNode, idx)
+// 	}
+// 	// // // case A3: both children underflowing, merge and delete
+// 	// // if err := t.mergeChildren(node, idx); err != nil {
+// 	// // 	return 0, err
+// 	// // }
+// 	// recurse after merging
+// 	return t.delete(node, k)
+// }
+
+// func (t *BTree) borrowFromInorderPredecessor(node, leftChildNode *Node, idx uint16) (uint32, error) {
+// 	// helper that iteratively finds the predecessor
+// 	inorderPredecessor := func(node *Node) ([]byte, []byte) {
+// 		for node.getType() != NodeTypeLeaf {
+// 			pageNum := node.getPtr(node.getNKeys())
+// 			node, _ = t.loadAsNode(pageNum)
+// 		}
+// 		k, v := node.getKV(node.getNKeys() - 1)
+// 		return k, v
+// 	}
+// 	// use the predecessor kv pair
+// 	predecessor, _ := inorderPredecessor(leftChildNode)
+// 	// and replace it with the node's kv at idx
+// 	// node.updateKV(idx, predecessor, predVal) TODO: fix this next
+// 	// also get rid of the predecessor here itself
+// 	newLeftPageNum, err := t.delete(leftChildNode, predecessor)
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	node.setPtr(idx, newLeftPageNum)
+// 	return t.copyToNewPage(node)
+// }
+
+// func (t *BTree) borrowFromInorderSuccessor(node, rightChildNode *Node, idx uint16) (uint32, error) {
+// 	// helper that iteratively finds the successor
+// 	inorderSuccessor := func(node *Node) ([]byte, []byte) {
+// 		for node.getType() != NodeTypeLeaf {
+// 			pageNum := node.getPtr(0)
+// 			node, _ = t.loadAsNode(pageNum)
+// 		}
+// 		k, v := node.getKV(0)
+// 		return k, v
+// 	}
+// 	// use the successor kv pair
+// 	successor, _ := inorderSuccessor(rightChildNode)
+// 	// and replace it with the node's kv at idx
+// 	// node.updateKV(idx, successor, succVal) TODO: fix this next
+// 	// also get rid of the successor here itself
+// 	newRightPageNum, err := t.delete(rightChildNode, successor)
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	node.setPtr(idx+1, newRightPageNum)
+// 	return t.copyToNewPage(node)
+// }

@@ -107,6 +107,14 @@ func (node *Node) setKV(k, v []byte, pos uint16) {
 	copy(node.data[pos:pos+uint16(len(v))], v)
 }
 
+func (node *Node) updateKV(idx uint16, k, v []byte) {
+	// simple approach: delete then insert
+	// works correctly because updateKV is only called when
+	// new key has same or similar size (inorder predecessor/successor)
+	node.deleteKV(idx)
+	node.insertKV(k, v)
+}
+
 func (node *Node) getKVLen(idx uint16) uint16 {
 	pos := node.kvPos(idx)
 	klen := binary.BigEndian.Uint16(node.data[pos:])

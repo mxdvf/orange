@@ -291,3 +291,69 @@ func TestBtreeDeleteNonExistentKey(t *testing.T) {
 		t.Fatal("expected error when deleting nonexistent key")
 	}
 }
+
+func TestBtreeDeleteCausesUnderflowAndRotatesRight(t *testing.T) {
+	// force a right rotation: left sibling must have enough keys to donate
+	tree := setup(t)
+
+	kNums := []string{"10", "15", "20", "21", "16", "12", "2"}
+	for _, kNum := range kNums {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		tree.Insert([]byte(k), []byte("mehul"))
+	}
+
+	tree.print()
+
+	// delete until a rotation is forced
+	toDelete := []string{"20", "21", "16"}
+	for _, kNum := range toDelete {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		if err := tree.Delete([]byte(k)); err != nil {
+			t.Fatalf("delete failed: %v", err)
+		}
+	}
+
+	tree.print()
+
+	// verify remaining keys
+	remaining := []string{"10", "15", "12", "2"}
+	for _, kNum := range remaining {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		v, err := tree.Search([]byte(k))
+		if err != nil || v == nil {
+			t.Fatalf("key %s should still exist", kNum)
+		}
+	}
+}
+
+func TestBtreeDeleteCausesUnderflowAndRotatesLeft(t *testing.T) {
+	// force a right rotation: left sibling must have enough keys to donate
+	tree := setup(t)
+
+	kNums := []string{"10", "15", "20", "21", "16", "12", "2"}
+	for _, kNum := range kNums {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		tree.Insert([]byte(k), []byte("mehul"))
+	}
+
+	// delete until a rotation is forced
+	toDelete := []string{"12", "2", "10"}
+	for _, kNum := range toDelete {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		if err := tree.Delete([]byte(k)); err != nil {
+			t.Fatalf("delete failed: %v", err)
+		}
+	}
+
+	tree.print()
+
+	// verify remaining keys
+	remaining := []string{"15", "16", "20", "21"}
+	for _, kNum := range remaining {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		v, err := tree.Search([]byte(k))
+		if err != nil || v == nil {
+			t.Fatalf("key %s should still exist", kNum)
+		}
+	}
+}
