@@ -31,7 +31,7 @@ func TestLeafNodeInsert1(t *testing.T) {
 
 func TestLeafNodeInsert2(t *testing.T) {
 	n := NewLeafNode()
-	for i := range 100 {
+	for i := range 175 {
 		k := fmt.Sprintf("kacky-%d", i)
 		err := n.Insert([]byte(k), []byte("mehul"))
 		if err != nil {
@@ -39,4 +39,7 @@ func TestLeafNodeInsert2(t *testing.T) {
 			break
 		}
 	}
+
+	t.Logf("node is filled to %v bytes\n", n.getSize())
+	debugPrint(n, 4095)
 }
