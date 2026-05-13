@@ -41,5 +41,9 @@ func TestLeafNodeInsert2(t *testing.T) {
 	}
 
 	t.Logf("node is filled to %v bytes\n", n.getSize())
-	debugPrint(n, 4095)
+
+	err := n.Insert([]byte("a"), []byte("b"))
+	if err == nil {
+		t.Fatalf("should've thrown an overflow error: %v", err)
+	}
 }

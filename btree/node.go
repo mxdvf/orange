@@ -117,7 +117,7 @@ func (node *Node) putKV(k, v []byte, pos uint16) {
 
 func (node *Node) shiftKVRight(totalKVLen, pos uint16) {
 	copy(node.data[pos+totalKVLen:], node.data[pos:])
-	clear(node.data[pos : pos+totalKVLen+1])
+	// clear(node.data[pos : pos+totalKVLen+1])
 }
 
 func (node *Node) getKVLen(idx uint16) uint16 {
@@ -157,12 +157,12 @@ func (node *Node) shiftPtrAndOffsetRight(idx uint16) {
 	// make space for new kv's pointer
 	ptrPos := node.ptrPos(idx)
 	copy(node.data[ptrPos+PTR_SIZE:], node.data[ptrPos:])
-	clear(node.data[ptrPos : ptrPos+PTR_SIZE])
+	// clear(node.data[ptrPos : ptrPos+PTR_SIZE])
 
 	// make space for new kv's offset
 	offsetPos := node.offsetPos(idx)
 	copy(node.data[offsetPos+OFFSET_SIZE:], node.data[offsetPos:])
-	clear(node.data[offsetPos : offsetPos+OFFSET_SIZE])
+	// clear(node.data[offsetPos : offsetPos+OFFSET_SIZE])
 }
 
 func (node *Node) reEvaluateOffsetList(idx, calculatedPos, totalLen uint16) {
