@@ -6,7 +6,7 @@ import (
 )
 
 func TestNKeys(t *testing.T) {
-	n := NewLeafNode()
+	n := NewNode(NODE_TYPE_LEAF)
 
 	k := n.getNKeys()
 	if k != 0 {
@@ -21,7 +21,7 @@ func TestNKeys(t *testing.T) {
 }
 
 func TestLeafNodeInsert1(t *testing.T) {
-	n := NewLeafNode()
+	n := NewNode(NODE_TYPE_LEAF)
 	err := n.Insert([]byte("kacky-24"), []byte("mehul"))
 	if err != nil {
 		t.Fatalf("got an error on insertion: %v", err)
@@ -30,7 +30,7 @@ func TestLeafNodeInsert1(t *testing.T) {
 }
 
 func TestLeafNodeInsert2(t *testing.T) {
-	n := NewLeafNode()
+	n := NewNode(NODE_TYPE_LEAF)
 	for i := range 175 {
 		k := fmt.Sprintf("kacky-%d", i)
 		err := n.Insert([]byte(k), []byte("mehul"))

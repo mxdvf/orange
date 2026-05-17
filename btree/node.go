@@ -34,15 +34,7 @@ type Node struct {
 // 2. offset list contains relative positioning: check kvPos()
 // 3. offset list points to the start of the next KV pair (a logically empty space to start from)
 
-func NewLeafNode() *Node {
-	return newNode(NODE_TYPE_LEAF)
-}
-
-func NewInternalNode() *Node {
-	return newNode(NODE_TYPE_INTERNAL)
-}
-
-func newNode(t int) *Node {
+func NewNode(t int) *Node {
 	n := &Node{data: make([]byte, 4096)}
 	binary.BigEndian.PutUint16(n.data[0:], uint16(t))
 	return n
