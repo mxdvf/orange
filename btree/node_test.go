@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-func TestNKeys(t *testing.T) {
-	n := NewNode(NODE_TYPE_LEAF)
+func TestNodeNKeys(t *testing.T) {
+	buf := make([]byte, 4096)
+	n := NewNode(buf)
 
 	k := n.getNKeys()
 	if k != 0 {
@@ -20,17 +21,18 @@ func TestNKeys(t *testing.T) {
 	}
 }
 
-func TestLeafNodeInsert1(t *testing.T) {
-	n := NewNode(NODE_TYPE_LEAF)
+func TestNodeLeafNodeInsert1(t *testing.T) {
+	buf := make([]byte, 4096)
+	n := NewNode(buf)
 	err := n.Insert([]byte("kacky-24"), []byte("mehul"))
 	if err != nil {
 		t.Fatalf("got an error on insertion: %v", err)
 	}
-	debugPrint(n, 60)
 }
 
-func TestLeafNodeInsert2(t *testing.T) {
-	n := NewNode(NODE_TYPE_LEAF)
+func TestNodeLeafNodeInsert2(t *testing.T) {
+	buf := make([]byte, 4096)
+	n := NewNode(buf)
 	for i := range 175 {
 		k := fmt.Sprintf("kacky-%d", i)
 		err := n.Insert([]byte(k), []byte("mehul"))

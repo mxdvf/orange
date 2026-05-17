@@ -7,32 +7,36 @@ import (
 	"testing"
 )
 
-func TestNodeManagerAllocate(t *testing.T) {
+func TestPageManagerAllocate(t *testing.T) {
 	fd, err := os.OpenFile("test.bin", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		t.Fatalf("error opening file: %v", err)
 	}
 
-	nm := newNodeManager(fd)
-	latestPageNum, err := mockAllocate(nm)
+	nm := newPageManager(fd)
+	latestPageNum, err := mockAllocateTwice(nm)
 	if err != nil {
-		t.Fatalf("failed to allocate a node: %v", err)
+		t.Fatalf("failed to allocate a page: %v", err)
 	}
 
 	if latestPageNum != 1 {
 		t.Fatalf("page number expected: 1, got: %d", latestPageNum)
 	}
+
+	if nm.len() != 2 {
+		t.Fatalf("total pages expected: 2, got: %d", nm.len())
+	}
 }
 
-func TestNodeManagerReadWrite(t *testing.T) {
+func TestPageManagerReadWrite(t *testing.T) {
 	fd, err := os.OpenFile("test.bin", os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		t.Fatalf("error opening file: %v", err)
 	}
 
-	nm := newNodeManager(fd)
-	mockAllocate(nm)
-	pageNum, _ := mockAllocate(nm)
+	nm := newPageManager(fd)
+	mockAllocateTwice(nm)
+	pageNum, _ := mockAllocateTwice(nm)
 
 	pageNum = rand.Intn(pageNum + 1)
 	t.Logf("attempting to write and then read from page number %d", pageNum)
@@ -42,12 +46,12 @@ func TestNodeManagerReadWrite(t *testing.T) {
 	copy(target[:], "hello")
 	copy(buf[:], "hello")
 
-	err = nm.write(pageNum, buf)
+	err = nm.write(uint32(pageNum), buf)
 	if err != nil {
 		t.Fatalf("failed to write: %v", err)
 	}
 
-	buf1, err := nm.read(pageNum)
+	buf1, err := nm.read(uint32(pageNum))
 	if err != nil {
 		t.Fatalf("failed to read: %v", err)
 	}
@@ -57,7 +61,7 @@ func TestNodeManagerReadWrite(t *testing.T) {
 	}
 }
 
-func mockAllocate(nm *nodeManager) (int, error) {
+func mockAllocateTwice(nm *pageManager) (int, error) {
 	_, err := nm.allocate()
 	if err != nil {
 		return 0, err
@@ -66,5 +70,5 @@ func mockAllocate(nm *nodeManager) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return pageNum, nil
+	return int(pageNum), nil
 }

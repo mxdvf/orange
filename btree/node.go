@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	NODE_TYPE_LEAF int = iota
+	NODE_TYPE_LEAF uint16 = iota
 	NODE_TYPE_INTERNAL
 )
 
@@ -23,7 +23,7 @@ const (
 )
 
 type Node struct {
-	// fire format:
+	// wire format:
 	// type  |  nkeys |   pointers  |  offset-array	 |		     key-values
 	//  2B   |   2B   |  nkeys * 4B |  	nkeys * 2B	 |  [klen: 2B][k][vlen: 2B][v]
 	data []byte
@@ -34,10 +34,8 @@ type Node struct {
 // 2. offset list contains relative positioning: check kvPos()
 // 3. offset list points to the start of the next KV pair (a logically empty space to start from)
 
-func NewNode(t int) *Node {
-	n := &Node{data: make([]byte, 4096)}
-	binary.BigEndian.PutUint16(n.data[0:], uint16(t))
-	return n
+func NewNode(buf []byte) *Node {
+	return &Node{data: buf}
 }
 
 func debugPrint(node *Node, top int) {
