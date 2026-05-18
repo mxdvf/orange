@@ -3,8 +3,11 @@ package btree
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 )
+
+var ErrNodeOverflow = errors.New("btree: node does not have space for more keys")
 
 const (
 	NODE_TYPE_LEAF uint16 = iota
@@ -37,9 +40,10 @@ func NewNode(buf []byte) *Node {
 	return &Node{data: buf}
 }
 
-func debugPrint(node *Node, top int) {
-	fmt.Printf("printing top %d bytes (0-%d)\n", top+1, top)
-	fmt.Println(node.data[:top+1])
+func debugPrint(node *Node, top int) string {
+	res := fmt.Sprintf("printing top %d bytes (0-%d)\n", top, top-1)
+	res += fmt.Sprintf("%v", node.data[:top])
+	return res
 }
 
 func (node *Node) getSize() uint16 {
@@ -111,7 +115,7 @@ func (node *Node) putKV(k, v []byte, pos uint16) {
 
 func (node *Node) shiftKVRight(totalKVLen, pos uint16) {
 	copy(node.data[pos+totalKVLen:], node.data[pos:])
-	// clear(node.data[pos : pos+totalKVLen+1])
+	clear(node.data[pos : pos+totalKVLen+1])
 }
 
 func (node *Node) getKVLen(idx uint16) uint16 {
@@ -130,6 +134,11 @@ func (node *Node) getPtr(idx uint16) uint32 {
 	return binary.BigEndian.Uint32(node.data[pos:])
 }
 
+func (node *Node) setPtr(idx uint16, ptr uint32) {
+	pos := HEADER_SIZE + PTR_SIZE*idx
+	binary.BigEndian.PutUint32(node.data[pos:], ptr)
+}
+
 func (node *Node) findInsertPos(target []byte) (uint16, uint16) {
 	if node.getNKeys() <= 0 {
 		return 0, node.kvPos(0)
@@ -142,7 +151,9 @@ func (node *Node) findInsertPos(target []byte) (uint16, uint16) {
 			return idx, node.kvPos(idx)
 		}
 	}
-	// for keys that would be inserted after the last kv pair
+	// for keys that are the largest in the range would be inserted
+	// after the last kv pair and hence the offset needs to be calculated
+	// manually
 	return idx, node.kvPos(idx-1) + node.getKVLen(idx-1)
 }
 
@@ -150,11 +161,11 @@ func (node *Node) shiftPtrAndOffsetRight(idx uint16) {
 	// make space for new kv's pointer
 	ptrPos := node.ptrPos(idx)
 	copy(node.data[ptrPos+PTR_SIZE:], node.data[ptrPos:])
-	// clear(node.data[ptrPos : ptrPos+PTR_SIZE])
+	clear(node.data[ptrPos : ptrPos+PTR_SIZE])
 	// make space for new kv's offset
 	offsetPos := node.offsetPos(idx)
 	copy(node.data[offsetPos+OFFSET_SIZE:], node.data[offsetPos:])
-	// clear(node.data[offsetPos : offsetPos+OFFSET_SIZE])
+	clear(node.data[offsetPos : offsetPos+OFFSET_SIZE])
 }
 
 func (node *Node) reEvaluateOffsetList(idx, calculatedPos, totalLen uint16) {
@@ -177,6 +188,34 @@ func (node *Node) reEvaluateOffsetList(idx, calculatedPos, totalLen uint16) {
 
 func (node *Node) getTotalLenPostInsert(k, v []byte) uint16 {
 	return uint16(len(k)+len(v)) + OFFSET_SIZE + PTR_SIZE + KEY_LEN_SIZE + VAL_LEN_SIZE
+}
+
+func (node *Node) insert(k, v []byte) error {
+	// return overflow error
+	if node.getSize()+node.getTotalLenPostInsert(k, v) >= PAGE_SIZE {
+		return ErrNodeOverflow
+	}
+
+	insertIdx, insertPos := node.findInsertPos(k)
+	// increment nkeys (do not re-order, everything
+	// after this line depends on it being here)
+	node.incrementNKeys()
+
+	// make space for pointer, offset
+	node.shiftPtrAndOffsetRight(insertIdx)
+	insertPos += PTR_SIZE + OFFSET_SIZE // update to new position
+
+	// make space for the new key
+	totalLen := uint16(len(k) + len(v) + KEY_LEN_SIZE + VAL_LEN_SIZE)
+	node.shiftKVRight(totalLen, insertPos)
+
+	// insert kv at that position
+	node.putKV(k, v, insertPos)
+
+	// update offset list with the newly added kv pair and also fix other offsets
+	insertPos -= node.getHeaderAndMetadataLen() // update insertPos to a relative offset before updating the list
+	node.reEvaluateOffsetList(insertIdx, insertPos, totalLen)
+	return nil
 }
 
 // func (node *Node) Insert(k, v []byte) error {
