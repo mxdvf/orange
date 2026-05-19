@@ -3,11 +3,8 @@ package btree
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 )
-
-var ErrNodeOverflow = errors.New("btree: node does not have space for more keys")
 
 const (
 	NODE_TYPE_LEAF uint16 = iota
@@ -62,6 +59,10 @@ func (node *Node) getNKeys() uint16 {
 
 func (node *Node) incrementNKeys() {
 	binary.BigEndian.PutUint16(node.data[2:], node.getNKeys()+1)
+}
+
+func (node *Node) setNKeys(nkeys uint16) {
+	binary.BigEndian.PutUint16(node.data[2:], nkeys)
 }
 
 func (node *Node) getHeaderAndMetadataLen() uint16 {
@@ -191,11 +192,6 @@ func (node *Node) getTotalLenPostInsert(k, v []byte) uint16 {
 }
 
 func (node *Node) insert(k, v []byte) error {
-	// return overflow error
-	if node.getSize()+node.getTotalLenPostInsert(k, v) >= PAGE_SIZE {
-		return ErrNodeOverflow
-	}
-
 	insertIdx, insertPos := node.findInsertPos(k)
 	// increment nkeys (do not re-order, everything
 	// after this line depends on it being here)
@@ -216,6 +212,32 @@ func (node *Node) insert(k, v []byte) error {
 	insertPos -= node.getHeaderAndMetadataLen() // update insertPos to a relative offset before updating the list
 	node.reEvaluateOffsetList(insertIdx, insertPos, totalLen)
 	return nil
+}
+
+func (node *Node) drySplit() (*Node, []byte, []byte) {
+	// check for the median key
+	medianIndex := node.getNKeys() / 2
+	// initialize a new node
+	buf := make([]byte, 4096)
+	newNode := NewNode(buf)
+	// from here on, we will operate on right half of each component of the node
+	// using (medianIndex+1) which involves extracting kv range, offset list,
+	// pointers and also reducing nkeys
+	for idx := medianIndex + 1; idx < node.getNKeys(); idx++ {
+		// increment new node's nkeys
+		newNode.incrementNKeys()
+		// pointer work
+		newNode.setPtr(idx, node.getPtr(idx))
+		// kv range work
+		k, v := node.getKV(idx)
+		newNode.insert(k, v) // TODO: this is very slow, instead you must try to copy entire range at once and shift it to the new node
+	}
+	// decrement old node's nkeys
+	node.setNKeys(medianIndex + 1)
+	// fetch the median key and val
+	medianKey, medianVal := newNode.getKV(medianIndex)
+	// return
+	return newNode, medianKey, medianVal
 }
 
 // func (node *Node) Insert(k, v []byte) error {

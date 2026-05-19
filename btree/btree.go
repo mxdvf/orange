@@ -3,7 +3,6 @@ package btree
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -72,33 +71,38 @@ func (t *BTree) Insert(k, v []byte) error {
 }
 
 func (t *BTree) insertInSubtree(node *Node, k, v []byte) (uint32, error) {
-	// TODO: hold preemption for now (assume only root and master interaction)
+	// preemptively fix a child before descending into it
+	idx, _ := node.findInsertPos(k)
+	// 1. find appropriate insertion position
+	appropriateSubtreePageNum := node.getPtr(idx)
+	// 2. fetch it from disk
+	appropriateSubtree, err := t.pm.read(appropriateSubtreePageNum)
+	if err != nil {
+		return 0, fmt.Errorf("could not read the appropriate subtree's page: %w", err)
+	}
+	child := NewNode(appropriateSubtree)
+
+	if node.getType() == NODE_TYPE_INTERNAL && child.getSize()+child.getTotalLenPostInsert(k, v) >= PAGE_SIZE {
+		newChild, medianKey, medianVal := child.drySplit()
+		pageNum, _ := t.copyToNewPage(newChild)
+		// 5. fix pointer for the parent
+		node.insert(medianKey, medianVal)
+		node.setPtr(idx+1, pageNum)
+	}
+
+	// TODO: when splitting, the equivalent node must be of the same type
+	// TODO: node constructor should have option for setting node type
 
 	switch node.getType() {
 	case NODE_TYPE_LEAF:
-		return t.insertInLeaf(node, k, v)
+		// simple logic to insert into the node and perform a
+		// copy-on-write
+		return t.handleInsertionInLeafNode(node, k, v)
 	case NODE_TYPE_INTERNAL:
-		// figure out which node it should be
-		idx, _ := node.findInsertPos(k)
-		appropriateSubtreePageNum := node.getPtr(idx)
-		// insert into the appropriate subtree
-		appropriateSubtree, err := t.pm.read(appropriateSubtreePageNum)
-		if err != nil {
-			return 0, fmt.Errorf("could not read the appropriate subtree's page: %w", err)
-		}
-		childPageNum, err := t.insertInSubtree(NewNode(appropriateSubtree), k, v)
-		if err != nil {
-			return 0, err
-		}
-		// we receive the page number of that node and so we now update our pointer
-		node.setPtr(idx, childPageNum)
-		// this node itself is put to a new location
-		pageNum, err := t.allocateNewAndWrite(node)
-		if err != nil {
-			return 0, fmt.Errorf("failed to allocate when writing back updated bytes to disk: %w", err)
-		}
-		// and finally we return the pagenum of this
-		return pageNum, nil
+		// orchestrator logic to enter into the correct subtree page
+		// recursively insert on that subtree's root, update all page nums
+		// upwards
+		return t.handleInsertionInInternalNode(node, k, v)
 	}
 
 	panic("should not have reached this point")
@@ -121,18 +125,13 @@ func (t *BTree) pointMasterToNewRoot(pageNum uint32) error {
 	return nil
 }
 
-func (t *BTree) insertInLeaf(node *Node, k, v []byte) (uint32, error) {
+func (t *BTree) handleInsertionInLeafNode(node *Node, k, v []byte) (uint32, error) {
 	// attempt insertion on the leaf node
 	if err := node.insert(k, v); err != nil {
-		switch {
-		case errors.Is(err, ErrNodeOverflow):
-			// TODO: perform split here
-		default:
-			return 0, err
-		}
+		return 0, err
 	}
 	// allocate and write to the new page
-	pageNum, err := t.allocateNewAndWrite(node)
+	pageNum, err := t.copyToNewPage(node)
 	if err != nil {
 		return 0, fmt.Errorf("failed to allocate when writing back updated bytes to disk: %w", err)
 	}
@@ -140,7 +139,31 @@ func (t *BTree) insertInLeaf(node *Node, k, v []byte) (uint32, error) {
 	return pageNum, nil
 }
 
-func (t *BTree) allocateNewAndWrite(node *Node) (uint32, error) {
+func (t *BTree) handleInsertionInInternalNode(node *Node, k, v []byte) (uint32, error) {
+	// figure out which node it should be
+	idx, _ := node.findInsertPos(k)
+	appropriateSubtreePageNum := node.getPtr(idx)
+	// insert into the appropriate subtree
+	appropriateSubtree, err := t.pm.read(appropriateSubtreePageNum)
+	if err != nil {
+		return 0, fmt.Errorf("could not read the appropriate subtree's page: %w", err)
+	}
+	childPageNum, err := t.insertInSubtree(NewNode(appropriateSubtree), k, v)
+	if err != nil {
+		return 0, err
+	}
+	// we receive the page number of that node and so we now update our pointer
+	node.setPtr(idx, childPageNum)
+	// this node itself is put to a new location
+	pageNum, err := t.copyToNewPage(node)
+	if err != nil {
+		return 0, fmt.Errorf("failed to allocate when writing back updated bytes to disk: %w", err)
+	}
+	// and finally we return the pagenum of this
+	return pageNum, nil
+}
+
+func (t *BTree) copyToNewPage(node *Node) (uint32, error) {
 	pageNum, err := t.pm.allocate()
 	if err != nil {
 		return 0, err
