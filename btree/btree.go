@@ -59,9 +59,24 @@ func (t *BTree) Insert(k, v []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to load the root node: %w", err)
 	}
+	rootNode := NewNode(root)
+	// special case for fixing an overfull root node
+	if rootNode.getSize()+rootNode.getTotalLenPostInsert(k, v) >= PAGE_SIZE {
+		newRootPageNum, err := t.splitRoot(rootNode)
+		if err != nil {
+			return fmt.Errorf("failed to split the root: %w", err)
+		}
+		t.pointMasterToNewRoot(newRootPageNum)
+		// reload the new root and continue
+		root, err = t.pm.read(t.root)
+		if err != nil {
+			return err
+		}
+		rootNode = NewNode(root)
+	}
 	// from here, the wrapper takes over (node) and all operations
 	// are thus performed on the wrapper
-	pageNum, err := t.insertInSubtree(NewNode(root), k, v)
+	pageNum, err := t.insertInSubtree(rootNode, k, v)
 	if err != nil {
 		return fmt.Errorf("failed to insert the key: %w", err)
 	}
@@ -70,42 +85,32 @@ func (t *BTree) Insert(k, v []byte) error {
 	return nil
 }
 
-func (t *BTree) insertInSubtree(node *Node, k, v []byte) (uint32, error) {
-	// preemptively fix a child before descending into it
-	idx, _ := node.findInsertPos(k)
-	// 1. find appropriate insertion position
-	appropriateSubtreePageNum := node.getPtr(idx)
-	// 2. fetch it from disk
-	appropriateSubtree, err := t.pm.read(appropriateSubtreePageNum)
+func (t *BTree) splitRoot(root *Node) (uint32, error) {
+	// split root into left and right
+	right, left, medianIndex := root.drySplit()
+	// persist the right node to disk
+	rightPageNum, err := t.copyToNewPage(right)
 	if err != nil {
-		return 0, fmt.Errorf("could not read the appropriate subtree's page: %w", err)
+		return 0, fmt.Errorf("could not persist the right page (new sibling) while splitting root: %w", err)
 	}
-	child := NewNode(appropriateSubtree)
-
-	if node.getType() == NODE_TYPE_INTERNAL && child.getSize()+child.getTotalLenPostInsert(k, v) >= PAGE_SIZE {
-		newChild, medianKey, medianVal := child.drySplit()
-		pageNum, _ := t.copyToNewPage(newChild)
-		// 5. fix pointer for the parent
-		node.insert(medianKey, medianVal)
-		node.setPtr(idx+1, pageNum)
+	// persist left child
+	leftPageNum, err := t.copyToNewPage(left) // TODO: a new left node should not be created, it should be manipulated to remove unnecessary data
+	if err != nil {
+		return 0, fmt.Errorf("could not persist the left page (new sibling) while splitting root: %w", err)
 	}
-
-	// TODO: when splitting, the equivalent node must be of the same type
-	// TODO: node constructor should have option for setting node type
-
-	switch node.getType() {
-	case NODE_TYPE_LEAF:
-		// simple logic to insert into the node and perform a
-		// copy-on-write
-		return t.handleInsertionInLeafNode(node, k, v)
-	case NODE_TYPE_INTERNAL:
-		// orchestrator logic to enter into the correct subtree page
-		// recursively insert on that subtree's root, update all page nums
-		// upwards
-		return t.handleInsertionInInternalNode(node, k, v)
-	}
-
-	panic("should not have reached this point")
+	// create new internal root
+	buf := make([]byte, PAGE_SIZE)
+	newRoot := NewNode(buf)
+	// set type to internal
+	binary.BigEndian.PutUint16(newRoot.data[0:], NODE_TYPE_INTERNAL)
+	// insert median key into new root
+	medianKey, medianVal := root.getKV(medianIndex)
+	newRoot.insert(medianKey, medianVal)
+	// set pointers to left and right children
+	newRoot.setPtr(0, leftPageNum)
+	newRoot.setPtr(1, rightPageNum)
+	// allocate and write new root
+	return t.copyToNewPage(newRoot)
 }
 
 func (t *BTree) pointMasterToNewRoot(pageNum uint32) error {
@@ -123,6 +128,24 @@ func (t *BTree) pointMasterToNewRoot(pageNum uint32) error {
 	// also update the in-mem pointer
 	t.root = pageNum
 	return nil
+}
+
+func (t *BTree) insertInSubtree(node *Node, k, v []byte) (uint32, error) {
+	// TODO: preemptive fix here
+
+	switch node.getType() {
+	case NODE_TYPE_LEAF:
+		// simple logic to insert into the node and perform a
+		// copy-on-write
+		return t.handleInsertionInLeafNode(node, k, v)
+	case NODE_TYPE_INTERNAL:
+		// orchestrator logic to enter into the correct subtree page
+		// recursively insert on that subtree's root, update all page nums
+		// upwards
+		return t.handleInsertionInInternalNode(node, k, v)
+	}
+
+	panic("should not have reached this point")
 }
 
 func (t *BTree) handleInsertionInLeafNode(node *Node, k, v []byte) (uint32, error) {

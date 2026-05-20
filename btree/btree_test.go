@@ -33,7 +33,7 @@ func TestBtreeInitialize(t *testing.T) {
 	}
 }
 
-func TestBtreeSimpleInsert(t *testing.T) {
+func TestBtreeSimpleInsert1(t *testing.T) {
 	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
 	t.Logf("running test case for file: %v", filename)
 	tree, err := NewBTree(filename)
@@ -41,11 +41,30 @@ func TestBtreeSimpleInsert(t *testing.T) {
 		t.Fatalf("cannot initialize tree: %v", err)
 	}
 
-	buf, err := tree.pm.read(1)
+	k := []byte("kacky")
+	v := []byte("mehul")
+	if err = tree.Insert(k, v); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	t.Log(tree.root)
+	buf, _ := tree.pm.read(tree.root)
+	t.Log(buf[:100])
+}
+
+func TestBtreeSimpleInsert2(t *testing.T) {
+	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+	t.Logf("running test case for file: %v", filename)
+	tree, err := NewBTree(filename)
+	if err != nil {
+		t.Fatalf("cannot initialize tree: %v", err)
+	}
+
+	buf, err := tree.pm.read(tree.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("looking at root(1) before inserting: %v", buf[:100])
+	t.Logf("looking at root(%v) before inserting: %v", tree.root, buf[:100])
 
 	k := []byte("kacky")
 	v := []byte("mehul")
@@ -53,11 +72,11 @@ func TestBtreeSimpleInsert(t *testing.T) {
 		t.Fatalf("insert failed: %v", err)
 	}
 
-	buf, err = tree.pm.read(2)
+	buf, err = tree.pm.read(tree.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("looking at root(2) after inserting one pair: %v", buf[:100])
+	t.Logf("looking at root(%v) after inserting one pair: %v", tree.root, buf[:100])
 
 	k = []byte("kacky11")
 	v = []byte("mehul11")
@@ -65,11 +84,11 @@ func TestBtreeSimpleInsert(t *testing.T) {
 		t.Fatalf("insert failed: %v", err)
 	}
 
-	buf, err = tree.pm.read(3)
+	buf, err = tree.pm.read(tree.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("looking at root(3) after inserting two pairs: %v", buf[:100])
+	t.Logf("looking at root(%v) after inserting two pairs: %v", tree.root, buf[:100])
 }
 
 func TestBtreeNonSplitMultipleKeys(t *testing.T) {
@@ -80,12 +99,61 @@ func TestBtreeNonSplitMultipleKeys(t *testing.T) {
 		t.Fatalf("cannot initialize tree: %v", err)
 	}
 
-	for i := range 175 {
+	for i := range 174 {
 		k := fmt.Sprintf("kacky-%d", i)
-		err := tree.Insert([]byte(k), []byte("----"))
+		err := tree.Insert([]byte(k), []byte("mehul"))
 		if err != nil {
 			t.Fatalf("got an error on insertion: %v", err)
 			break
 		}
 	}
+}
+
+func TestBtreeSplitRoot(t *testing.T) {
+	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+	t.Logf("running test case for file: %v", filename)
+	tree, err := NewBTree(filename)
+	if err != nil {
+		t.Fatalf("cannot initialize tree: %v", err)
+	}
+
+	var keyCount uint16 = 0
+
+	for i := range 174 {
+		k := fmt.Sprintf("kacky-%d", i)
+		err := tree.Insert([]byte(k), []byte("mehul"))
+		if err != nil {
+			t.Fatalf("got an error on insertion: %v", err)
+		}
+		keyCount++
+	}
+
+	k1, v1 := []byte("kacky-175"), []byte("mehul")
+	tree.Insert(k1, v1)
+	keyCount++
+	// ---- the root split has happened by now ---- //
+
+	// reading child 1
+	buf, _ := tree.pm.read(179)
+	left := NewNode(buf)
+
+	// reading child 2
+	buf, _ = tree.pm.read(176)
+	right := NewNode(buf)
+
+	// naive check
+	if left.getNKeys()+right.getNKeys()+1 != keyCount {
+		t.Fatal("nope something went seriously wrong in between, some keys got lost")
+	}
+}
+
+func TestBtreeSplitRandomInternalNode(t *testing.T) {
+	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+	t.Logf("running test case for file: %v", filename)
+	tree, err := NewBTree(filename)
+	if err != nil {
+		t.Fatalf("cannot initialize tree: %v", err)
+	}
+
+	fmt.Println(tree)
 }

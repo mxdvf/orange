@@ -61,16 +61,12 @@ func (node *Node) incrementNKeys() {
 	binary.BigEndian.PutUint16(node.data[2:], node.getNKeys()+1)
 }
 
-func (node *Node) setNKeys(nkeys uint16) {
-	binary.BigEndian.PutUint16(node.data[2:], nkeys)
-}
-
 func (node *Node) getHeaderAndMetadataLen() uint16 {
-	return HEADER_SIZE + PTR_SIZE*node.getNKeys() + OFFSET_SIZE*node.getNKeys()
+	return HEADER_SIZE + PTR_SIZE*(node.getNKeys()+1) + OFFSET_SIZE*node.getNKeys()
 }
 
 func (node *Node) offsetPos(idx uint16) uint16 {
-	return HEADER_SIZE + PTR_SIZE*node.getNKeys() + OFFSET_SIZE*idx
+	return HEADER_SIZE + PTR_SIZE*(node.getNKeys()+1) + OFFSET_SIZE*idx
 }
 
 func (node *Node) getOffset(idx uint16) uint16 {
@@ -79,7 +75,7 @@ func (node *Node) getOffset(idx uint16) uint16 {
 }
 
 func (node *Node) kvPos(idx uint16) uint16 {
-	return HEADER_SIZE + PTR_SIZE*node.getNKeys() + OFFSET_SIZE*node.getNKeys() + node.getOffset(idx)
+	return HEADER_SIZE + PTR_SIZE*(node.getNKeys()+1) + OFFSET_SIZE*node.getNKeys() + node.getOffset(idx)
 }
 
 func (node *Node) getKV(idx uint16) ([]byte, []byte) {
@@ -192,6 +188,9 @@ func (node *Node) getTotalLenPostInsert(k, v []byte) uint16 {
 }
 
 func (node *Node) insert(k, v []byte) error {
+	if node.getSize()+node.getTotalLenPostInsert(k, v) >= PAGE_SIZE {
+		return fmt.Errorf("node does not have enough space")
+	}
 	insertIdx, insertPos := node.findInsertPos(k)
 	// increment nkeys (do not re-order, everything
 	// after this line depends on it being here)
@@ -210,26 +209,27 @@ func (node *Node) insert(k, v []byte) error {
 	return nil
 }
 
-func (node *Node) drySplit() (*Node, []byte, []byte) {
+func (node *Node) drySplit() (*Node, *Node, uint16) {
 	// check for the median key
 	medianIndex := node.getNKeys() / 2
 	// initialize a new node
-	buf := make([]byte, 4096)
-	newNode := NewNode(buf)
+	rightNode := NewNode(make([]byte, 4096))
+	leftNode := NewNode(make([]byte, 4096)) // TODO: should not create a new left node
 	// from here on, we will operate on right half of each component of the node
 	// using (medianIndex+1) which involves extracting kv range, offset list,
 	// pointers and also reducing nkeys
+	for idx := uint16(0); idx < medianIndex; idx++ {
+		k, v := node.getKV(idx)
+		leftNode.insert(k, v)
+		leftNode.setPtr(idx, node.getPtr(idx))
+	}
 	for idx := medianIndex + 1; idx < node.getNKeys(); idx++ {
 		// kv range work
 		k, v := node.getKV(idx)
-		newNode.insert(k, v) // TODO: this is very slow, instead you must try to copy entire range at once and shift it to the new node
+		rightNode.insert(k, v) // TODO: this is very slow, instead you must try to copy entire range at once and shift it to the new node
 		// pointer work
-		newNode.setPtr(idx, node.getPtr(idx))
+		rightNode.setPtr(idx-medianIndex-1, node.getPtr(idx))
 	}
-	// fetch the median key and val
-	medianKey, medianVal := node.getKV(medianIndex)
-	// decrement old node's nkeys
-	node.setNKeys(medianIndex + 1)
 	// return
-	return newNode, medianKey, medianVal
+	return leftNode, rightNode, medianIndex
 }
