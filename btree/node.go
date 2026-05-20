@@ -116,7 +116,7 @@ func (node *Node) putKV(k, v []byte, pos uint16) {
 
 func (node *Node) shiftKVRight(totalKVLen, pos uint16) {
 	copy(node.data[pos+totalKVLen:], node.data[pos:])
-	clear(node.data[pos : pos+totalKVLen+1])
+	clear(node.data[pos : pos+totalKVLen])
 }
 
 func (node *Node) getKVLen(idx uint16) uint16 {
@@ -196,18 +196,14 @@ func (node *Node) insert(k, v []byte) error {
 	// increment nkeys (do not re-order, everything
 	// after this line depends on it being here)
 	node.incrementNKeys()
-
 	// make space for pointer, offset
 	node.shiftPtrAndOffsetRight(insertIdx)
-	insertPos += PTR_SIZE + OFFSET_SIZE // update to new position
-
+	insertPos += PTR_SIZE + OFFSET_SIZE // update to new position, also when node has 1 key, it has 2 pointers and 1 offset
 	// make space for the new key
 	totalLen := uint16(len(k) + len(v) + KEY_LEN_SIZE + VAL_LEN_SIZE)
 	node.shiftKVRight(totalLen, insertPos)
-
 	// insert kv at that position
 	node.putKV(k, v, insertPos)
-
 	// update offset list with the newly added kv pair and also fix other offsets
 	insertPos -= node.getHeaderAndMetadataLen() // update insertPos to a relative offset before updating the list
 	node.reEvaluateOffsetList(insertIdx, insertPos, totalLen)
@@ -224,49 +220,16 @@ func (node *Node) drySplit() (*Node, []byte, []byte) {
 	// using (medianIndex+1) which involves extracting kv range, offset list,
 	// pointers and also reducing nkeys
 	for idx := medianIndex + 1; idx < node.getNKeys(); idx++ {
-		// increment new node's nkeys
-		newNode.incrementNKeys()
-		// pointer work
-		newNode.setPtr(idx, node.getPtr(idx))
 		// kv range work
 		k, v := node.getKV(idx)
 		newNode.insert(k, v) // TODO: this is very slow, instead you must try to copy entire range at once and shift it to the new node
+		// pointer work
+		newNode.setPtr(idx, node.getPtr(idx))
 	}
+	// fetch the median key and val
+	medianKey, medianVal := node.getKV(medianIndex)
 	// decrement old node's nkeys
 	node.setNKeys(medianIndex + 1)
-	// fetch the median key and val
-	medianKey, medianVal := newNode.getKV(medianIndex)
 	// return
 	return newNode, medianKey, medianVal
 }
-
-// func (node *Node) Insert(k, v []byte) error {
-// 	// figure out where to put the key
-// 	if node.getSize()+node.getTotalLenPostInsert(k, v) < PAGE_SIZE {
-// 		insertIdx, insertPos := node.findInsertPos(k)
-// 		node.insertInLeafNode(k, v, insertIdx, insertPos)
-// 		return nil
-// 	}
-// 	return errors.New("sorry no more keys")
-// }
-
-// func (node *Node) insertInLeafNode(k, v []byte, insertIdx, insertPos uint16) {
-// 	// increment nkeys (do not re-order, everything
-// 	// after this line depends on it being here)
-// 	node.incrementNKeys()
-
-// 	// make space for pointer, offset
-// 	node.shiftPtrAndOffsetRight(insertIdx)
-// 	insertPos += PTR_SIZE + OFFSET_SIZE // update to new position
-
-// 	// make space for the new key
-// 	totalLen := uint16(len(k) + len(v) + KEY_LEN_SIZE + VAL_LEN_SIZE)
-// 	node.shiftKVRight(totalLen, insertPos)
-
-// 	// insert kv at that position
-// 	node.putKV(k, v, insertPos)
-
-// 	// update offset list with the newly added kv pair and also fix other offsets
-// 	insertPos -= node.getHeaderAndMetadataLen() // update insertPos to a relative offset before updating the list
-// 	node.reEvaluateOffsetList(insertIdx, insertPos, totalLen)
-// }

@@ -71,3 +71,21 @@ func TestBtreeSimpleInsert(t *testing.T) {
 	}
 	t.Logf("looking at root(3) after inserting two pairs: %v", buf[:100])
 }
+
+func TestBtreeNonSplitMultipleKeys(t *testing.T) {
+	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+	t.Logf("running test case for file: %v", filename)
+	tree, err := NewBTree(filename)
+	if err != nil {
+		t.Fatalf("cannot initialize tree: %v", err)
+	}
+
+	for i := range 175 {
+		k := fmt.Sprintf("kacky-%d", i)
+		err := tree.Insert([]byte(k), []byte("----"))
+		if err != nil {
+			t.Fatalf("got an error on insertion: %v", err)
+			break
+		}
+	}
+}
