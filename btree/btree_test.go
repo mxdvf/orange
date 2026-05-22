@@ -1,7 +1,6 @@
 package btree
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"os"
@@ -27,8 +26,7 @@ func TestBtreeInitialize(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	ntype := binary.BigEndian.Uint16(r[0:])
-	if ntype != NODE_TYPE_LEAF {
+	if NewNode(r).getType() != NODE_TYPE_LEAF {
 		t.Fatal("root should've been a leaf page the very first time")
 	}
 }
@@ -163,23 +161,28 @@ func TestBtreeSplitInternalNode(t *testing.T) {
 		}
 	}
 
-	k1, v1 := []byte("kacky-175"), []byte("mehul")
-	tree.Insert(k1, v1)
+	k, v := []byte("kacky-175"), []byte("mehul")
+	tree.Insert(k, v)
 	// ---- root split happened here ---- //
 
-	// buf, _ := tree.pm.read(tree.root)
-	// root := NewNode(buf)
+	buf, _ := tree.pm.read(tree.root)
+	root := NewNode(buf)
+	if root.getNKeys() != 1 {
+		t.Fatal("major bug, print `root.data`")
+	}
 	// fmt.Println(root.data)
 
-	// // reading child 1
-	// buf, _ = tree.pm.read(179)
-	// left := NewNode(buf)
-	// fmt.Println(left.data)
+	// reading child 1
+	buf, _ = tree.pm.read(root.getPtr(0))
+	left := NewNode(buf)
+	// reading child 2
+	buf, _ = tree.pm.read(root.getPtr(1))
+	right := NewNode(buf)
+	if left.getNKeys() != 87 || right.getNKeys() != 87 {
+		t.Fatal("expected both left and right child to have 87 keys")
+	}
 
-	// // reading child 2
-	// buf, _ = tree.pm.read(176)
-	// right := NewNode(buf)
-	// fmt.Println(right.data)
+	// ---- at this point, root should have 1 key, left and right child each should have 87 keys = totalling upto 175 keys ---- //
 
 	for i := range 91 {
 		k := fmt.Sprintf("backy-%d", i)
@@ -189,31 +192,127 @@ func TestBtreeSplitInternalNode(t *testing.T) {
 		}
 	}
 
-	k1, v1 = []byte("a"), []byte("mehul")
-	err = tree.Insert(k1, v1)
-	if err != nil {
-		t.Log("lemme have a look")
-	}
-
-	k1, v1 = []byte("a2"), []byte("mehul")
-	err = tree.Insert(k1, v1)
-	if err != nil {
-		t.Log("lemme have a look")
-	}
-
-	// TODO: fix this test
-
-	buf, _ := tree.pm.read(tree.root)
-	root := NewNode(buf)
-	fmt.Println(root.data)
+	buf, _ = tree.pm.read(tree.root)
+	root = NewNode(buf)
 
 	// reading child 1
-	buf, _ = tree.pm.read(367)
-	left := NewNode(buf)
-	fmt.Println(left.data)
-
+	buf, _ = tree.pm.read(root.getPtr(0))
+	left = NewNode(buf)
 	// reading child 2
-	buf, _ = tree.pm.read(363)
-	right := NewNode(buf)
-	fmt.Println(right.data)
+	buf, _ = tree.pm.read(root.getPtr(1))
+	right = NewNode(buf)
+	if left.getNKeys() != 178 || right.getNKeys() != 87 {
+		t.Fatal("expected left and right child to have 178 and 87 keys respectively")
+	}
+
+	// ---- now we add 91 keys to the left child specifically which makes left child's keys = 178 keys ONLY IN THE LEFT CHILD ---- //
+	// ---- root should still have 1 key and right child should still possess 87 keys ---- //
+
+	k, v = []byte("a"), []byte("mehul")
+	err = tree.Insert(k, v)
+	if err != nil {
+		t.Fatalf("something went wrong during insertion: %v", err)
+	}
+
+	// root
+	buf, _ = tree.pm.read(tree.root)
+	root = NewNode(buf)
+	if root.getNKeys() != 2 {
+		t.Fatal("major bug, root should have 2 keys by now")
+	}
+
+	// reading left child
+	buf, _ = tree.pm.read(root.getPtr(0))
+	left = NewNode(buf)
+	// reading middle child
+	buf, _ = tree.pm.read(root.getPtr(1))
+	middle := NewNode(buf)
+	// reading right child
+	buf, _ = tree.pm.read(root.getPtr(2))
+	right = NewNode(buf)
+	// check
+	if left.getNKeys() != 89 || middle.getNKeys() != 89 || right.getNKeys() != 87 {
+		t.Fatal("major bug, child(0), child(1), child(2) should have 89, 89, 87 keys respectively")
+	}
+
+	// ---- now we added 1 more key to the left child which made it overflow ---- //
+	// ---- root should now have 2 keys; child(0) = 89 keys, child(1) = 89 keys, child(2) = 87 keys ---- //
+	// ---- the addition works, 178 keys broken down into 1/2 with 1 key handed over to the parent ---- //
+
+	k, v = []byte("dacky-1"), []byte("mehul")
+	err = tree.Insert(k, v)
+	if err != nil {
+		t.Fatalf("failed to insert the key: %v", err)
+	}
+
+	// root
+	buf, _ = tree.pm.read(tree.root)
+	root = NewNode(buf) // need this here to re-initialize root
+
+	// reading left child
+	buf, _ = tree.pm.read(root.getPtr(0))
+	left = NewNode(buf)
+	// reading middle child
+	buf, _ = tree.pm.read(root.getPtr(1))
+	middle = NewNode(buf)
+	// reading right child
+	buf, _ = tree.pm.read(root.getPtr(2))
+	right = NewNode(buf)
+	// check
+	if left.getNKeys() != 89 || middle.getNKeys() != 90 || right.getNKeys() != 87 {
+		t.Fatal("major bug, child(0), child(1), child(2) should have 89, 90, 87 keys respectively")
+	}
+
+	// // ---- now we added 1 more key to the middle child of root aka child(1) ---- //
+	// // ---- simply put, child(1) should have 90 keys now ---- //
+}
+
+func TestBtreeSearch(t *testing.T) {
+	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+	t.Logf("running test case for file: %v", filename)
+	tree, err := NewBTree(filename)
+	if err != nil {
+		t.Fatalf("cannot initialize tree: %v", err)
+	}
+
+	k := []byte("kacky1")
+	v := []byte("mehul2")
+	if err = tree.Insert(k, v); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	v, err = tree.Search(k)
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+
+	t.Logf("key: %v has value: %v", string(k), string(v))
+}
+
+func TestBtreeSearchOnceAfterMultipleKeys(t *testing.T) {
+	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+	t.Logf("running test case for file: %v", filename)
+	tree, err := NewBTree(filename)
+	if err != nil {
+		t.Fatalf("cannot initialize tree: %v", err)
+	}
+
+	for i := range 300 {
+		k := fmt.Sprintf("kacky-%d", i)
+		err := tree.Insert([]byte(k), []byte("mehul"))
+		if err != nil {
+			t.Fatalf("got an error on insertion: %v", err)
+		}
+	}
+	// TODO: even though my logic is page number agnostic, it fails at anything near 400/500 -- i am assuming this maybe because the file gets too large
+
+	t.Logf("let's look at the page number of root: %v", tree.root)
+
+	k1 := "kacky-145"
+	v, err := tree.Search([]byte(k1))
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+
+	t.Logf("key: %v has value: %v", string(k1), string(v))
 }

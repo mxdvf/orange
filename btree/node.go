@@ -188,9 +188,9 @@ func (node *Node) getTotalLenPostInsert(k, v []byte) uint16 {
 }
 
 func (node *Node) insert(k, v []byte) (uint16, error) {
-	if node.getSize()+node.getTotalLenPostInsert(k, v) >= PAGE_SIZE {
-		return 0, fmt.Errorf("node does not have enough space")
-	}
+	// if node.full(k, v) {
+	// 	return 0, fmt.Errorf("node does not have enough space")
+	// }
 	insertIdx, insertPos := node.findInsertPos(k)
 	// increment nkeys (do not re-order, everything
 	// after this line depends on it being here)
@@ -213,8 +213,8 @@ func (node *Node) drySplit() (*Node, *Node, uint16) {
 	// check for the median key
 	medianIndex := node.getNKeys() / 2
 	// initialize a new node
-	rightNode := NewNode(make([]byte, 4096))
 	leftNode := NewNode(make([]byte, 4096)) // TODO: should not create a new left node
+	rightNode := NewNode(make([]byte, 4096))
 	// set node type
 	binary.BigEndian.PutUint16(rightNode.data[0:], node.getType())
 	binary.BigEndian.PutUint16(leftNode.data[0:], node.getType())
