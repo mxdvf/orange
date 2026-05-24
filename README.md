@@ -3,7 +3,7 @@
 A persistent, embeddable key-value storage engine written in Go. Built from scratch using first principles.
 
 This project was built for the sake of learning how storage engines work under the hood. <br>
-And so correctness > speed.
+And so correctness > speed (for V1).
 
 ## What it is
 
