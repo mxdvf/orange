@@ -238,5 +238,5 @@ func (node *Node) drySplit() (*Node, *Node, uint16) {
 }
 
 func (n *Node) full(k, v []byte) bool {
-	return n.getSize()+n.getTotalLenPostInsert(k, v) >= PAGE_SIZE
+	return n.getSize()+n.getTotalLenPostInsert(k, v) > PAGE_SIZE
 }

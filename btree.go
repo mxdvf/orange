@@ -2,7 +2,6 @@
 package btree
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -55,6 +54,10 @@ func initializeRootAndMasterPage(pm *pageManager) (uint32, error) {
 }
 
 func (t *BTree) Insert(k, v []byte) error {
+	// validate
+	// if uint16(len(k)+len(v))+KEY_LEN_SIZE+VAL_LEN_SIZE > PAGE_SIZE/2 {
+	// 	return fmt.Errorf("key+value too large")
+	// }
 	// load the root node from disk
 	root, err := t.pm.read(t.root)
 	if err != nil {
@@ -238,42 +241,42 @@ func (t *BTree) copyToNewPage(node *Node) (uint32, error) {
 	return pageNum, nil
 }
 
-func (t *BTree) Search(k []byte) ([]byte, error) {
-	root, err := t.pm.read(t.root)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read the root: %v", err)
-	}
-	rootNode := NewNode(root)
-	return t.search(rootNode, k)
-}
+// func (t *BTree) Search(k []byte) ([]byte, error) {
+// 	root, err := t.pm.read(t.root)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to read the root: %v", err)
+// 	}
+// 	rootNode := NewNode(root)
+// 	return t.search(rootNode, k)
+// }
 
-func (t *BTree) search(node *Node, target []byte) ([]byte, error) {
-	// this function will give us an index such that target <= some_key_in_node
-	idx, _ := node.findInsertPos(target)
-	// assuming the key is in the node, we will receive an index that is within bounds
-	// because if the key is out of bounds then it means that we must traverse down. the
-	// only reason we can receive an out of bound index is because we're using the a helper
-	// for insertion which can return out of bound index if the key is larger than all keys
-	// present in the node
-	nKeys := node.getNKeys()
-	if idx < nKeys {
-		k, v := node.getKV(idx)
-		if res := bytes.Compare(k, target); res == 0 {
-			return v, nil
-		}
-	}
-	// if the node type we're operating on is a leaf, then we end the search
-	if node.getType() == NODE_TYPE_LEAF {
-		return nil, fmt.Errorf("reached the end of the tree and couldn't find the key")
-	}
-	// ptr[idx] is always the correct child because as for pointers, they are always 1 more
-	// than the # of keys, so it works for: (1) idx < nkeys, and (2) idx = nkeys because we will
-	// always receive the correct pointer
-	pageNum := node.getPtr(idx)
-	buf, err := t.pm.read(pageNum)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read page: %v", err)
-	}
-	// recursively search the subtree
-	return t.search(NewNode(buf), target)
-}
+// func (t *BTree) search(node *Node, target []byte) ([]byte, error) {
+// 	// this function will give us an index such that target <= some_key_in_node
+// 	idx, _ := node.findInsertPos(target)
+// 	// assuming the key is in the node, we will receive an index that is within bounds
+// 	// because if the key is out of bounds then it means that we must traverse down. the
+// 	// only reason we can receive an out of bound index is because we're using the a helper
+// 	// for insertion which can return out of bound index if the key is larger than all keys
+// 	// present in the node
+// 	nKeys := node.getNKeys()
+// 	if idx < nKeys {
+// 		k, v := node.getKV(idx)
+// 		if res := bytes.Compare(k, target); res == 0 {
+// 			return v, nil
+// 		}
+// 	}
+// 	// if the node type we're operating on is a leaf, then we end the search
+// 	if node.getType() == NODE_TYPE_LEAF {
+// 		return nil, fmt.Errorf("reached the end of the tree and couldn't find the key")
+// 	}
+// 	// ptr[idx] is always the correct child because as for pointers, they are always 1 more
+// 	// than the # of keys, so it works for: (1) idx < nkeys, and (2) idx = nkeys because we will
+// 	// always receive the correct pointer
+// 	pageNum := node.getPtr(idx)
+// 	buf, err := t.pm.read(pageNum)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to read page: %v", err)
+// 	}
+// 	// recursively search the subtree
+// 	return t.search(NewNode(buf), target)
+// }

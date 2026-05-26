@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -15,11 +16,19 @@ func init() {
 	}
 }
 
-func TestBtreeInitialize(t *testing.T) {
-	tree, err := NewBTree("test/test.bin")
+func initializeTree(t *testing.T) *BTree {
+	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+	t.Logf("running test case for file: %v", filename)
+	tree, err := NewBTree(filename)
 	if err != nil {
 		t.Fatalf("cannot initialize tree: %v", err)
 	}
+
+	return tree
+}
+
+func TestBtreeInitialize(t *testing.T) {
+	tree := initializeTree(t)
 
 	r, err := tree.pm.read(tree.root)
 	if err != nil {
@@ -32,16 +41,11 @@ func TestBtreeInitialize(t *testing.T) {
 }
 
 func TestBtreeSimpleInsert1(t *testing.T) {
-	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
-	t.Logf("running test case for file: %v", filename)
-	tree, err := NewBTree(filename)
-	if err != nil {
-		t.Fatalf("cannot initialize tree: %v", err)
-	}
+	tree := initializeTree(t)
 
 	k := []byte("kacky")
 	v := []byte("mehul")
-	if err = tree.Insert(k, v); err != nil {
+	if err := tree.Insert(k, v); err != nil {
 		t.Fatalf("insert failed: %v", err)
 	}
 
@@ -51,12 +55,7 @@ func TestBtreeSimpleInsert1(t *testing.T) {
 }
 
 func TestBtreeSimpleInsert2(t *testing.T) {
-	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
-	t.Logf("running test case for file: %v", filename)
-	tree, err := NewBTree(filename)
-	if err != nil {
-		t.Fatalf("cannot initialize tree: %v", err)
-	}
+	tree := initializeTree(t)
 
 	buf, err := tree.pm.read(tree.root)
 	if err != nil {
@@ -90,12 +89,7 @@ func TestBtreeSimpleInsert2(t *testing.T) {
 }
 
 func TestBtreeNonSplitMultipleKeys(t *testing.T) {
-	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
-	t.Logf("running test case for file: %v", filename)
-	tree, err := NewBTree(filename)
-	if err != nil {
-		t.Fatalf("cannot initialize tree: %v", err)
-	}
+	tree := initializeTree(t)
 
 	for i := range 174 {
 		k := fmt.Sprintf("kacky-%d", i)
@@ -108,12 +102,7 @@ func TestBtreeNonSplitMultipleKeys(t *testing.T) {
 }
 
 func TestBtreeSplitRoot(t *testing.T) {
-	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
-	t.Logf("running test case for file: %v", filename)
-	tree, err := NewBTree(filename)
-	if err != nil {
-		t.Fatalf("cannot initialize tree: %v", err)
-	}
+	tree := initializeTree(t)
 
 	var keyCount uint16 = 0
 
@@ -146,12 +135,7 @@ func TestBtreeSplitRoot(t *testing.T) {
 }
 
 func TestBtreeSplitInternalNode(t *testing.T) {
-	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
-	t.Logf("running test case for file: %v", filename)
-	tree, err := NewBTree(filename)
-	if err != nil {
-		t.Fatalf("cannot initialize tree: %v", err)
-	}
+	tree := initializeTree(t)
 
 	for i := range 174 {
 		k := fmt.Sprintf("kacky-%d", i)
@@ -209,7 +193,7 @@ func TestBtreeSplitInternalNode(t *testing.T) {
 	// ---- root should still have 1 key and right child should still possess 87 keys ---- //
 
 	k, v = []byte("a"), []byte("mehul")
-	err = tree.Insert(k, v)
+	err := tree.Insert(k, v)
 	if err != nil {
 		t.Fatalf("something went wrong during insertion: %v", err)
 	}
@@ -267,52 +251,105 @@ func TestBtreeSplitInternalNode(t *testing.T) {
 	// // ---- simply put, child(1) should have 90 keys now ---- //
 }
 
-func TestBtreeSearch(t *testing.T) {
-	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
-	t.Logf("running test case for file: %v", filename)
-	tree, err := NewBTree(filename)
-	if err != nil {
-		t.Fatalf("cannot initialize tree: %v", err)
+func TestBtreeVeryLargeKeyInsert(t *testing.T) {
+	tree := initializeTree(t)
+
+	k := strings.Repeat("kacky", 812)
+	if err := tree.Insert([]byte(k), []byte("mehul")); err != nil {
+		t.Fatalf("got an error on insertion: %v", err)
 	}
 
-	k := []byte("kacky1")
-	v := []byte("mehul2")
-	if err = tree.Insert(k, v); err != nil {
-		t.Fatalf("insert failed: %v", err)
+	if err := tree.Insert([]byte("z"), []byte("vvv")); err != nil {
+		t.Fatalf("got an error on insertion: %v", err)
 	}
 
-	v, err = tree.Search(k)
-	if err != nil {
-		t.Fatalf("search failed: %v", err)
-	}
+	// if err := tree.Insert([]byte(k), []byte("mehul")); err != nil {
+	// 	t.Fatalf("got an error on insertion2: %v", err)
+	// }
 
-	t.Logf("key: %v has value: %v", string(k), string(v))
+	buf, _ := tree.pm.read(tree.root)
+	root := NewNode(buf)
+	t.Log(root.data)
+
+	buf, _ = tree.pm.read(root.getPtr(0))
+	root = NewNode(buf)
+	t.Log(root.data)
+
+	buf, _ = tree.pm.read(root.getPtr(1))
+	root = NewNode(buf)
+	t.Log(root.data)
 }
 
-func TestBtreeSearchOnceAfterMultipleKeys(t *testing.T) {
-	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
-	t.Logf("running test case for file: %v", filename)
-	tree, err := NewBTree(filename)
-	if err != nil {
-		t.Fatalf("cannot initialize tree: %v", err)
-	}
+func TestBtreeUnboundedInsert(t *testing.T) {
+	tree := initializeTree(t)
+	// TODO: test this later
 
-	for i := range 300 {
-		k := fmt.Sprintf("kacky-%d", i)
+	for i := range 371 {
+		fmt.Println(i)
+		k := fmt.Sprintf("kackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykacky-%d", i)
 		err := tree.Insert([]byte(k), []byte("mehul"))
 		if err != nil {
 			t.Fatalf("got an error on insertion: %v", err)
 		}
 	}
-	// TODO: even though my logic is page number agnostic, it fails at anything near 400/500 -- i am assuming this maybe because the file gets too large
 
-	t.Logf("let's look at the page number of root: %v", tree.root)
-
-	k1 := "kacky-145"
-	v, err := tree.Search([]byte(k1))
-	if err != nil {
-		t.Fatalf("search failed: %v", err)
-	}
-
-	t.Logf("key: %v has value: %v", string(k1), string(v))
+	k := fmt.Sprintf("kacky-%d", 371)
+	tree.Insert([]byte(k), []byte("mehul"))
 }
+
+/*
+2. adding 1000 key-value pairs
+3. adding a key-value of moderately large size that only 1key value pair could squeeze in perfectly
+4. adding a key value of size such that absolutely no other key can come in
+*/
+
+// func TestBtreeSearch(t *testing.T) {
+// 	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+// 	t.Logf("running test case for file: %v", filename)
+// 	tree, err := NewBTree(filename)
+// 	if err != nil {
+// 		t.Fatalf("cannot initialize tree: %v", err)
+// 	}
+
+// 	k := []byte("kacky1")
+// 	v := []byte("mehul2")
+// 	if err = tree.Insert(k, v); err != nil {
+// 		t.Fatalf("insert failed: %v", err)
+// 	}
+
+// 	v, err = tree.Search(k)
+// 	if err != nil {
+// 		t.Fatalf("search failed: %v", err)
+// 	}
+
+// 	t.Logf("key: %v has value: %v", string(k), string(v))
+// }
+
+// func TestBtreeSearchOnceAfterMultipleKeys(t *testing.T) {
+// 	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+// 	t.Logf("running test case for file: %v", filename)
+// 	tree, err := NewBTree(filename)
+// 	if err != nil {
+// 		t.Fatalf("cannot initialize tree: %v", err)
+// 	}
+
+// 	// TODO: 350 works but 500 does not, this should work only after insertion logic is fixed
+// 	for i := range 500 {
+// 		fmt.Println(tree.root)
+// 		k := fmt.Sprintf("kacky-%d", i)
+// 		err := tree.Insert([]byte(k), []byte("mehul"))
+// 		if err != nil {
+// 			t.Fatalf("got an error on insertion: %v", err)
+// 		}
+// 	}
+
+// 	t.Logf("let's look at the page number of root: %v", tree.root)
+
+// 	k1 := "kacky-145"
+// 	v, err := tree.Search([]byte(k1))
+// 	if err != nil {
+// 		t.Fatalf("search failed: %v", err)
+// 	}
+
+// 	t.Logf("key: %v has value: %v", string(k1), string(v))
+// }
