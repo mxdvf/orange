@@ -43,7 +43,7 @@ func TestBtreeInitialize(t *testing.T) {
 func TestBtreeSimpleInsert1(t *testing.T) {
 	tree := initializeTree(t)
 
-	k := []byte("kacky")
+	k := []byte("ducky")
 	v := []byte("mehul")
 	if err := tree.Insert(k, v); err != nil {
 		t.Fatalf("insert failed: %v", err)
@@ -63,7 +63,7 @@ func TestBtreeSimpleInsert2(t *testing.T) {
 	}
 	t.Logf("looking at root(%v) before inserting: %v", tree.root, buf[:100])
 
-	k := []byte("kacky")
+	k := []byte("ducky")
 	v := []byte("mehul")
 	if err = tree.Insert(k, v); err != nil {
 		t.Fatalf("insert failed: %v", err)
@@ -75,7 +75,7 @@ func TestBtreeSimpleInsert2(t *testing.T) {
 	}
 	t.Logf("looking at root(%v) after inserting one pair: %v", tree.root, buf[:100])
 
-	k = []byte("kacky11")
+	k = []byte("ducky11")
 	v = []byte("mehul11")
 	if err = tree.Insert(k, v); err != nil {
 		t.Fatalf("insert failed: %v", err)
@@ -92,7 +92,7 @@ func TestBtreeNonSplitMultipleKeys(t *testing.T) {
 	tree := initializeTree(t)
 
 	for i := range 174 {
-		k := fmt.Sprintf("kacky-%d", i)
+		k := fmt.Sprintf("ducky-%d", i)
 		err := tree.Insert([]byte(k), []byte("mehul"))
 		if err != nil {
 			t.Fatalf("got an error on insertion: %v", err)
@@ -107,7 +107,7 @@ func TestBtreeSplitRoot(t *testing.T) {
 	var keyCount uint16 = 0
 
 	for i := range 174 {
-		k := fmt.Sprintf("kacky-%d", i)
+		k := fmt.Sprintf("ducky-%d", i)
 		err := tree.Insert([]byte(k), []byte("mehul"))
 		if err != nil {
 			t.Fatalf("got an error on insertion: %v", err)
@@ -115,7 +115,7 @@ func TestBtreeSplitRoot(t *testing.T) {
 		keyCount++
 	}
 
-	k1, v1 := []byte("kacky-175"), []byte("mehul")
+	k1, v1 := []byte("ducky-175"), []byte("mehul")
 	tree.Insert(k1, v1)
 	keyCount++
 	// ---- the root split has happened by now ---- //
@@ -138,14 +138,14 @@ func TestBtreeSplitInternalNode(t *testing.T) {
 	tree := initializeTree(t)
 
 	for i := range 174 {
-		k := fmt.Sprintf("kacky-%d", i)
+		k := fmt.Sprintf("ducky-%d", i)
 		err := tree.Insert([]byte(k), []byte("mehul"))
 		if err != nil {
 			t.Fatalf("got an error on insertion: %v", err)
 		}
 	}
 
-	k, v := []byte("kacky-175"), []byte("mehul")
+	k, v := []byte("ducky-175"), []byte("mehul")
 	tree.Insert(k, v)
 	// ---- root split happened here ---- //
 
@@ -254,7 +254,7 @@ func TestBtreeSplitInternalNode(t *testing.T) {
 func TestBtreeVeryLargeKeyInsert(t *testing.T) {
 	tree := initializeTree(t)
 
-	k := strings.Repeat("kacky", 812)
+	k := strings.Repeat("ducky", 812)
 	if err := tree.Insert([]byte(k), []byte("mehul")); err != nil {
 		t.Fatalf("got an error on insertion: %v", err)
 	}
@@ -286,14 +286,14 @@ func TestBtreeUnboundedInsert(t *testing.T) {
 
 	for i := range 371 {
 		fmt.Println(i)
-		k := fmt.Sprintf("kackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykackykacky-%d", i)
+		k := fmt.Sprintf("duckyduckyduckyduckyduckyduckyduckyduckyduckyduckyduckyduckyduckyduckyduckyduckyduckyduckyduckyducky-%d", i)
 		err := tree.Insert([]byte(k), []byte("mehul"))
 		if err != nil {
 			t.Fatalf("got an error on insertion: %v", err)
 		}
 	}
 
-	k := fmt.Sprintf("kacky-%d", 371)
+	k := fmt.Sprintf("ducky-%d", 371)
 	tree.Insert([]byte(k), []byte("mehul"))
 }
 
@@ -311,7 +311,7 @@ func TestBtreeUnboundedInsert(t *testing.T) {
 // 		t.Fatalf("cannot initialize tree: %v", err)
 // 	}
 
-// 	k := []byte("kacky1")
+// 	k := []byte("ducky1")
 // 	v := []byte("mehul2")
 // 	if err = tree.Insert(k, v); err != nil {
 // 		t.Fatalf("insert failed: %v", err)
@@ -336,7 +336,7 @@ func TestBtreeUnboundedInsert(t *testing.T) {
 // 	// TODO: 350 works but 500 does not, this should work only after insertion logic is fixed
 // 	for i := range 500 {
 // 		fmt.Println(tree.root)
-// 		k := fmt.Sprintf("kacky-%d", i)
+// 		k := fmt.Sprintf("ducky-%d", i)
 // 		err := tree.Insert([]byte(k), []byte("mehul"))
 // 		if err != nil {
 // 			t.Fatalf("got an error on insertion: %v", err)
@@ -345,7 +345,7 @@ func TestBtreeUnboundedInsert(t *testing.T) {
 
 // 	t.Logf("let's look at the page number of root: %v", tree.root)
 
-// 	k1 := "kacky-145"
+// 	k1 := "ducky-145"
 // 	v, err := tree.Search([]byte(k1))
 // 	if err != nil {
 // 		t.Fatalf("search failed: %v", err)
