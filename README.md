@@ -9,6 +9,10 @@ And so correctness > speed.
 
 A storage engine built to understand what happens underneath databases. No frameworks, no abstractions borrowed from elsewhere — everything from the disk layout to the write-ahead log is implemented from scratch. The name is aspirational I know, but v1 is about getting it right.
 
+## Project Layout
+
+Pretty messed up for now and it remains this way until we get to setting up the KV store.
+
 ## V1
 
 - [ ] Persistent CoW B-tree: CoW enabling lock-free reads
