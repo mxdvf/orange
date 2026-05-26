@@ -1,27 +1,27 @@
-### SuperfastKV
+# SuperfastKV
 
-Calling it superfastkv would mean nothing if don't measure speed, latency, throughput and write speed and all that.
-We'll also measure the actual speed and benchmark it with other in-memory stores like Redis, Memcache, especially Pogocache and also DiceDB.
+A persistent, embeddable key-value storage engine written in Go. Built from scratch using first principles.
 
-Finish this with proper testing.
+This project was built for the sake of learning how storage engines work under the hood. <br>
+And so correctness > speed.
 
-It's going to be fun. Every step of the journey could be an article:
+## What it is
 
-- Building production-grade BTree implementation
-- Benchmarking and testing your BTree implementation (because it's literally what powers the entire storage system)
-- Benchmarking your kv store, comparing with other stores (can say you built something slower than all others but obviously i am still proud of it)
+A storage engine built to understand what happens underneath databases. No frameworks, no abstractions borrowed from elsewhere — everything from the disk layout to the write-ahead log is implemented from scratch. The name is aspirational I know, but v1 is about getting it right.
 
-### BTree
+## V1
 
-Tips on how to make the implementation faster:
+- [ ] Persistent CoW B-tree: CoW enabling lock-free reads
+- [ ] Raw syscall (mmap + pwrite) I/O: no buffered stdlib, mmap for reads, pwrite for atomic page writes.
+- [ ] CRC32 corruption detection: every page is checksummed on write and verified on read.
+- [ ] Free list management: reclaims pages from deleted or CoW-replaced nodes.
+- [ ] Write-ahead log (WAL): crash recovery via a sequential log.
+- [ ] fsync durability: ensure data survives OS crashes, not just process crashes.
+- [ ] Benchmarks: and maybe comparing it with other KV stores
 
-- Replace linear scan with: binary search (large node fanout) or SIMD scan (if you go hardcore)
-- Keep node size aligned to cache lines (typically 64B / 128B)
-- Store keys in a contiguous array (you likely already do)
-- Consider branchless comparisons
+## V2
 
-Tradeoffs
-
-- use variable keys and values (not all kv pairs are same -- fixed length keys and values in the btree)
-- implement CoW semantics (or look into stratified btree - https://arxiv.org/pdf/1103.4282v2 to make it faster)
-- using 2 bytes for pointers, restricting database size to 256MB. let's see what breaks.
+- [ ] SIMD-accelerated comparisons: vectorized key search within nodes, better cache utilization.
+- [ ] TOAST-style storage: `The Oversized-Attribute Storage Technique (TOAST)` by Postgres
+- [ ] Stratified B-tree: separate hot and cold layers, 100x faster writes, 10x faster reads
+- [ ] More to be determined: I don't know what I don't know
