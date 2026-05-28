@@ -13,6 +13,10 @@ func (t *BTree) print() {
 		queueLen := len(queue)
 		for i := range queueLen {
 			pageNum := queue[i]
+			if pageNum == 0 {
+				fmt.Println("//////////////////////////")
+				continue
+			}
 			buf, _ := t.pm.Read(pageNum)
 			n := NewNode(buf)
 			// visual print logic
@@ -24,6 +28,7 @@ func (t *BTree) print() {
 				for idx := range n.getNKeys() + 1 {
 					queue = append(queue, n.getPtr(idx))
 				}
+				queue = append(queue, 0)
 			}
 		}
 		// important: shift the queue forward so we don't re-process nodes

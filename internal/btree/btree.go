@@ -1,3 +1,6 @@
+// Package btree implements a persistent, copy-on-write B-tree backed by a
+// page-managed file. Each write operation allocates a new page rather than
+// mutating in place, giving the tree append-only, crash-safe semantics.
 package btree
 
 import (
@@ -28,7 +31,8 @@ const (
 )
 
 var (
-	ErrOverflow = errors.New("key+value too large")
+	ErrOverflow    = errors.New("key+value too large")
+	ErrKeyNotFound = errors.New("key not found")
 )
 
 type BTree struct {

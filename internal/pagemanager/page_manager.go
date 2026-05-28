@@ -1,3 +1,6 @@
+// Package pagemanager provides low-level page-oriented I/O over a flat file.
+// It treats the file as a sequence of fixed-size pages, supporting allocation,
+// random reads, and random writes with optional fsync durability.
 package pagemanager
 
 import (

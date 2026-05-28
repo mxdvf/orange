@@ -122,12 +122,12 @@ func (node *Node) getTotalLenIfInserted(k, v []byte) uint16 {
 	return uint16(len(k)+len(v)) + OffsetSize + PointerSize + KeyLenSize + ValLenSize
 }
 
-func (n *Node) overflow() bool {
+func (node *Node) overflow() bool {
 	// a node overflows when it no longer has room for the worst-case key
 	// (aka one that's 1344B) that could be promoted from its child into itself
 	// during a split which means a median key of max size. this was a bug that
 	// took me 6 days to figure out, although i admit it was an oversight on my part.
-	return n.getSize() > PageSize-MaxAllowedKVLen
+	return node.getSize() > PageSize-MaxAllowedKVLen // TODO: but then due to checking this, out of the 4096 bytes, 1344 are completely being wasted, there has to be some other way out
 }
 
 func (node *Node) underflow() bool {
@@ -136,7 +136,7 @@ func (node *Node) underflow() bool {
 	return node.getNKeys() <= 1
 }
 
-// below are almost all insertion related methods
+// ------ below are almost all insertion related methods
 
 func (node *Node) drySplit() (*Node, *Node, uint16) {
 	// check for the median key
@@ -241,4 +241,4 @@ func (node *Node) reEvaluateOffsetList(idx, calculatedPos, totalLen uint16) {
 	}
 }
 
-// below are almost all deletion related methods
+// ------- below are almost all deletion related methods
