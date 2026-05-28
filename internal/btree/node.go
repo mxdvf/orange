@@ -43,10 +43,6 @@ func (node *Node) incrementNKeys() {
 	binary.BigEndian.PutUint16(node.data[2:], node.getNKeys()+1)
 }
 
-func (node *Node) decrementNKeys() {
-	binary.BigEndian.PutUint16(node.data[2:], node.getNKeys()-1)
-}
-
 func (node *Node) getHeaderAndMetadataLen() uint16 {
 	return HeaderSize + PointerSize*(node.getNKeys()+1) + OffsetSize*node.getNKeys()
 }
@@ -108,7 +104,6 @@ func (node *Node) ptrPos(idx uint16) uint16 {
 }
 
 func (node *Node) getPtr(idx uint16) uint32 {
-	// TODO: why would i ever use idx=nkeys(), think about it, i guess i am missing something
 	pos := HeaderSize + PointerSize*idx
 	return binary.BigEndian.Uint32(node.data[pos:])
 }
@@ -130,19 +125,13 @@ func (node *Node) overflow() bool {
 	return node.getSize() > PageSize-MaxAllowedKVLen // TODO: but then due to checking this, out of the 4096 bytes, 1344 are completely being wasted, there has to be some other way out
 }
 
-func (node *Node) underflow() bool {
-	// minimum degree t=2, so minimum keys = t-1 = 1
-	// a node underflows when it has only 1 key and we need to delete from it
-	return node.getNKeys() <= 1
-}
-
 // ------ below are almost all insertion related methods
 
-func (node *Node) drySplit() (*Node, *Node, uint16) {
+func (node *Node) split() (*Node, *Node, uint16) {
 	// check for the median key
 	medianIndex := node.getNKeys() / 2
 	// initialize a new node
-	leftNode := NewNode(make([]byte, 4096)) // TODO: should not create a new left node, instead manipulate the left node itself to make space
+	leftNode := NewNode(make([]byte, 4096))
 	rightNode := NewNode(make([]byte, 4096))
 	// set node type
 	rightNode.setType(node.getType())

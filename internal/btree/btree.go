@@ -114,14 +114,14 @@ func (t *BTree) Insert(k, v []byte) error {
 
 func (t *BTree) setupNewRoot(rootNode *Node) (*Node, error) {
 	// split root into left and right
-	left, right, medianIndex := rootNode.drySplit()
+	left, right, medianIndex := rootNode.split()
 	// persist the right node to disk
 	rightPageNum, err := t.copyToNewPage(right)
 	if err != nil {
 		return nil, fmt.Errorf("could not persist the right node while splitting root: %w", err)
 	}
 	// persist left child
-	leftPageNum, err := t.copyToNewPage(left) // TODO: a new left node should not be created, it should be manipulated to remove unnecessary data
+	leftPageNum, err := t.copyToNewPage(left)
 	if err != nil {
 		return nil, fmt.Errorf("could not persist the left node while splitting root: %w", err)
 	}
@@ -136,15 +136,6 @@ func (t *BTree) setupNewRoot(rootNode *Node) (*Node, error) {
 	// set pointers to left and right children
 	newRootNode.setPtr(0, leftPageNum)
 	newRootNode.setPtr(1, rightPageNum)
-	// allocate and write new root
-	rootPageNum, err := t.copyToNewPage(newRootNode)
-	if err != nil {
-		return nil, fmt.Errorf("could not persist the right node while splitting root: %w", err)
-	}
-	// point master to the new root page
-	if err = t.pointMasterToNewRoot(rootPageNum); err != nil {
-		return nil, fmt.Errorf("failed to point master to the new root: %w", err)
-	}
 	// return the new root
 	return newRootNode, nil
 }
@@ -180,15 +171,15 @@ func (t *BTree) preemptiveFix(node *Node, k, v []byte) error {
 		return fmt.Errorf("could not read the appropriate subtree's page: %w", err)
 	}
 	// check if it's full, if yes break it down into 2 nodes
-	if childNode.overflow() {
-		leftChildNode, rightChildNode, medianIndex := childNode.drySplit()
+	if childNode.overflow() { // TODO: parent must be able to look into the child and see if it's median when taken inside of it can cause issues or not
+		leftChildNode, rightChildNode, medianIndex := childNode.split()
 		// persist the right node to disk
 		rightPageNum, err := t.copyToNewPage(rightChildNode)
 		if err != nil {
 			return fmt.Errorf("could not persist the right node during preemptive fix: %w", err)
 		}
 		// persist left child
-		leftPageNum, err := t.copyToNewPage(leftChildNode) // TODO: a new left node should not be created, it should be manipulated to remove unnecessary data
+		leftPageNum, err := t.copyToNewPage(leftChildNode)
 		if err != nil {
 			return fmt.Errorf("could not persist the left node during preemptive fix: %w", err)
 		}
@@ -224,9 +215,8 @@ func (t *BTree) handleInsertionInLeafNode(node *Node, k, v []byte) (uint32, erro
 func (t *BTree) handleInsertionInInternalNode(node *Node, k, v []byte) (uint32, error) {
 	// figure out which node it should be
 	idx, _ := node.findInsertPos(k)
-	appropriateSubtreePageNum := node.getPtr(idx)
 	// insert into the appropriate subtree
-	appropriateSubtree, err := t.loadAsNode(appropriateSubtreePageNum)
+	appropriateSubtree, err := t.loadAsNode(node.getPtr(idx))
 	if err != nil {
 		return 0, fmt.Errorf("could not read the appropriate subtree's page: %w", err)
 	}
