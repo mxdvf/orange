@@ -43,6 +43,10 @@ func (node *Node) incrementNKeys() {
 	binary.BigEndian.PutUint16(node.data[2:], node.getNKeys()+1)
 }
 
+func (node *Node) decrementNKeys() {
+	binary.BigEndian.PutUint16(node.data[2:], node.getNKeys()-1)
+}
+
 func (node *Node) getHeaderAndMetadataLen() uint16 {
 	return HeaderSize + PointerSize*(node.getNKeys()+1) + OffsetSize*node.getNKeys()
 }
@@ -56,7 +60,18 @@ func (node *Node) getOffset(idx uint16) uint16 {
 	return binary.BigEndian.Uint16(node.data[pos:])
 }
 
+func (node *Node) setOffset(idx, offset uint16) {
+	pos := node.offsetPos(idx)
+	binary.BigEndian.PutUint16(node.data[pos:], offset)
+}
+
 func (node *Node) kvPos(idx uint16) uint16 {
+	if node.getNKeys() == 0 {
+		return HeaderSize + PointerSize*(node.getNKeys()+1) + OffsetSize*node.getNKeys() + node.getOffset(0)
+	}
+	if idx == node.getNKeys() {
+		return node.kvPos(idx-1) + node.getKVLen(idx-1)
+	}
 	return HeaderSize + PointerSize*(node.getNKeys()+1) + OffsetSize*node.getNKeys() + node.getOffset(idx)
 }
 
@@ -122,7 +137,37 @@ func (node *Node) overflow() bool {
 	// (aka one that's 1344B) that could be promoted from its child into itself
 	// during a split which means a median key of max size. this was a bug that
 	// took me 6 days to figure out, although i admit it was an oversight on my part.
-	return node.getSize() > PageSize-MaxAllowedKVLen // TODO: but then due to checking this, out of the 4096 bytes, 1344 are completely being wasted, there has to be some other way out
+
+	// TODO: parent must be able to look into the child and see if it's median when taken
+	// inside of it can cause issues or not. this means that in order to save those 1344B
+	// we must do a second preemptive fix on the node (aka parent) we're on right now.
+	// this is the only way that we can save those extra bytes, a bit messy and complex
+	// but good ROI.
+	return node.getSize() > PageSize-MaxAllowedKVLen
+}
+
+func (node *Node) underflow() bool {
+	// minimum degree t=2, so minimum keys = t-1 = 1
+	// a node underflows when it has only 1 key and we need to delete from it
+	return node.getNKeys() <= 1
+}
+
+func (node *Node) findIndex(target []byte) uint16 {
+	if node.getNKeys() <= 0 {
+		return 0
+	}
+	// loop over all keys to find the appropriate insertion position
+	var idx uint16
+	for idx = range node.getNKeys() {
+		k, _ := node.getKV(idx)
+		if res := bytes.Compare(target, k); res == -1 || res == 0 {
+			return idx
+		}
+	}
+	// for keys that are the largest in the range would be inserted
+	// after the last kv pair and hence the offset needs to be calculated
+	// manually
+	return idx + 1
 }
 
 // ------ below are almost all insertion related methods
@@ -140,7 +185,7 @@ func (node *Node) split() (*Node, *Node, uint16) {
 	// i.e [0, medianIndex), but remember pointers is always 1 more than nkeys
 	for idx := uint16(0); idx < medianIndex; idx++ {
 		k, v := node.getKV(idx)
-		leftNode.insertSelf(k, v)
+		leftNode.insertKV(k, v)
 	}
 	// pointer always goes one more than the nunber of keys, hence different loop
 	for idx := uint16(0); idx < medianIndex+1; idx++ {
@@ -150,7 +195,7 @@ func (node *Node) split() (*Node, *Node, uint16) {
 	// i.e [medianIndex+1, nkeys), but again pointers is always 1 more than nkeys
 	for idx := medianIndex + 1; idx < node.getNKeys(); idx++ {
 		k, v := node.getKV(idx)
-		rightNode.insertSelf(k, v)
+		rightNode.insertKV(k, v)
 	}
 	for idx := medianIndex + 1; idx < node.getNKeys()+1; idx++ {
 		rightNode.setPtr(idx-medianIndex-1, node.getPtr(idx))
@@ -159,45 +204,29 @@ func (node *Node) split() (*Node, *Node, uint16) {
 	return leftNode, rightNode, medianIndex
 }
 
-func (node *Node) findInsertPos(target []byte) (uint16, uint16) {
-	if node.getNKeys() <= 0 {
-		return 0, node.kvPos(0)
-	}
-	// loop over all keys to find the appropriate insertion position
-	var idx uint16
-	for idx = 0; idx < node.getNKeys(); idx++ {
-		k, _ := node.getKV(idx)
-		if res := bytes.Compare(target, k); res == -1 || res == 0 {
-			return idx, node.kvPos(idx)
-		}
-	}
-	// for keys that are the largest in the range would be inserted
-	// after the last kv pair and hence the offset needs to be calculated
-	// manually
-	return idx, node.kvPos(idx-1) + node.getKVLen(idx-1)
-}
-
-func (node *Node) insertSelf(k, v []byte) (uint16, error) {
+func (node *Node) insertKV(k, v []byte) {
 	if node.getSize()+node.getTotalLenIfInserted(k, v) >= PageSize {
 		panic("illegal node, it should have been split by a preemptive fix")
 	}
 	// find insertion point
-	insertIdx, insertPos := node.findInsertPos(k)
+	insertIdx := node.findIndex(k)
+	insertPos := node.kvPos(insertIdx)
 	// increment nkeys
 	node.incrementNKeys()
 	// make space for ptr, offset, then kv
 	kvLen := uint16(len(k) + len(v) + KeyLenSize + ValLenSize)
-	node.makeSpace(insertIdx, insertPos, kvLen)
+	node.shiftRight(insertIdx, insertPos, kvLen)
 	// put kv there
 	insertPos += PointerSize + OffsetSize
 	node.setKV(k, v, insertPos)
-	// fix offsets for everyone using a relative offset pos
-	insertPos -= node.getHeaderAndMetadataLen() // update insertPos to a relative offset before updating the list
-	node.reEvaluateOffsetList(insertIdx, insertPos, kvLen)
-	return insertIdx, nil
+	// update insertPos to a relative offset before updating the list and
+	// fix offset for the node and nodes after it
+	insertPos -= node.getHeaderAndMetadataLen()
+	node.setOffset(insertIdx, insertPos)
+	node.updateOffsets1(insertIdx, kvLen)
 }
 
-func (node *Node) makeSpace(idx, pos, kvLen uint16) {
+func (node *Node) shiftRight(idx, pos, kvLen uint16) {
 	// make space for new kv's pointer
 	ptrPos := node.ptrPos(idx)
 	copy(node.data[ptrPos+PointerSize:], node.data[ptrPos:])
@@ -212,22 +241,39 @@ func (node *Node) makeSpace(idx, pos, kvLen uint16) {
 	clear(node.data[pos : pos+kvLen])
 }
 
-func (node *Node) reEvaluateOffsetList(idx, calculatedPos, totalLen uint16) {
-	for i := uint16(0); i < node.getNKeys(); i++ {
-		pos := node.offsetPos(i)
-		offsetBeforeUpdate := node.getOffset(i)
-		switch {
-		// anything at idx, simply insert the calculated offset.
-		// there's no workaround for this beecause when inserting a key, we calculated the offset
-		// for the very first time. think about this.
-		case i == idx:
-			binary.BigEndian.PutUint16(node.data[pos:], calculatedPos)
-		// anything before idx requires no update
-		// anything after idx we just need to add totalKVLen
-		case i > idx:
-			binary.BigEndian.PutUint16(node.data[pos:], offsetBeforeUpdate+totalLen)
-		}
+func (node *Node) updateOffsets1(idx, totalLen uint16) {
+	for i := idx + 1; i < node.getNKeys(); i++ {
+		node.setOffset(i, node.getOffset(i)+totalLen)
 	}
 }
 
 // ------- below are almost all deletion related methods
+
+func (node *Node) deleteKV(idx uint16) {
+	// find deletion point
+	kvLen, kvStart := node.getKVLen(idx), node.kvPos(idx)
+	nodeSize := node.getSize()
+	// remove kv by shifting everything left
+	copy(node.data[kvStart:], node.data[kvStart+kvLen:])
+	clear(node.data[nodeSize-kvLen:])
+	nodeSize -= kvLen
+	// remove offset at idx and update remaining offsets
+	offsetPos := node.offsetPos(idx)
+	copy(node.data[offsetPos:], node.data[offsetPos+OffsetSize:])
+	clear(node.data[nodeSize-OffsetSize:])
+	nodeSize -= OffsetSize
+	// remove pointer at idx
+	ptrPos := node.ptrPos(idx)
+	copy(node.data[ptrPos:], node.data[ptrPos+PointerSize:])
+	clear(node.data[nodeSize-PointerSize:])
+	// decrement nkeys
+	node.decrementNKeys()
+	// fix offsets for all keys after idx
+	node.updateOffsets2(idx, kvLen)
+}
+
+func (node *Node) updateOffsets2(idx, kvLen uint16) {
+	for i := idx; i < node.getNKeys(); i++ {
+		node.setOffset(i, node.getOffset(i)-kvLen)
+	}
+}

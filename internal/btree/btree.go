@@ -20,7 +20,7 @@ const (
 )
 
 const (
-	MaxAllowedKVLen = 1344 // 1344 bytes, simple math to fit 3 in-line keys in a node to maintain b-tree structure
+	MaxAllowedKVLen = 1344 // 1344 bytes, fit 3 keys in a node to maintain b-tree structure
 
 	PageSize    = 4096 // 4096 bytes
 	HeaderSize  = 4    // 2 + 2 = 4 bytes
@@ -46,9 +46,12 @@ func NewBTree(filename string, sync bool) (*BTree, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open the main file: %w", err)
 	}
+	// TODO: need to expose a Close() method to the user so they could
+	// defer closing the file in their program, although we're using
+	// fsync but it's still should be a safe practice to provide this
 	// initialize root and master pages
 	pm := pagemanager.NewPageManager(fd, PageSize, sync)
-	root, err := initializeRootAndMasterPage(pm)
+	root, err := loadOrCreateRoot(pm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize root and master nodes: %v", err)
 	}
@@ -59,7 +62,7 @@ func NewBTree(filename string, sync bool) (*BTree, error) {
 	}, nil
 }
 
-func initializeRootAndMasterPage(pm *pagemanager.PageManager) (uint32, error) {
+func loadOrCreateRoot(pm *pagemanager.PageManager) (uint32, error) {
 	buf, err := pm.Read(0)
 	switch err {
 	// if there's EOF error, then the master page does not exist
@@ -95,7 +98,7 @@ func (t *BTree) Insert(k, v []byte) error {
 	}
 	// perform a split if it's already full
 	if rootNode.overflow() {
-		rootNode, err = t.setupNewRoot(rootNode)
+		rootNode, err = t.splitRoot(rootNode)
 		if err != nil {
 			return fmt.Errorf("failed to setup the new root: %w", err)
 		}
@@ -112,7 +115,7 @@ func (t *BTree) Insert(k, v []byte) error {
 	return nil
 }
 
-func (t *BTree) setupNewRoot(rootNode *Node) (*Node, error) {
+func (t *BTree) splitRoot(rootNode *Node) (*Node, error) {
 	// split root into left and right
 	left, right, medianIndex := rootNode.split()
 	// persist the right node to disk
@@ -132,7 +135,7 @@ func (t *BTree) setupNewRoot(rootNode *Node) (*Node, error) {
 	newRootNode.setType(NodeTypeInternal)
 	// insert median key into new root
 	medianKey, medianVal := rootNode.getKV(medianIndex)
-	newRootNode.insertSelf(medianKey, medianVal)
+	newRootNode.insertKV(medianKey, medianVal)
 	// set pointers to left and right children
 	newRootNode.setPtr(0, leftPageNum)
 	newRootNode.setPtr(1, rightPageNum)
@@ -143,7 +146,7 @@ func (t *BTree) setupNewRoot(rootNode *Node) (*Node, error) {
 func (t *BTree) insert(node *Node, k, v []byte) (uint32, error) {
 	// preemptive fix before ever touching a child node
 	if node.getType() == NodeTypeInternal {
-		if err := t.preemptiveFix(node, k, v); err != nil {
+		if err := t.splitChild(node, k, v); err != nil {
 			return 0, err
 		}
 	}
@@ -152,26 +155,26 @@ func (t *BTree) insert(node *Node, k, v []byte) (uint32, error) {
 	case NodeTypeLeaf:
 		// simple logic to insert into the node and perform a
 		// copy-on-write
-		return t.handleInsertionInLeafNode(node, k, v)
+		return t.insertIntoLeaf(node, k, v)
 	case NodeTypeInternal:
 		// orchestrator logic to enter into the correct subtree page
 		// recursively insert on that subtree's root, update all page nums
 		// upwards
-		return t.handleInsertionInInternalNode(node, k, v)
+		return t.insertIntoInternal(node, k, v)
 	}
 	panic("should not have reached this point")
 }
 
-func (t *BTree) preemptiveFix(node *Node, k, v []byte) error {
+func (t *BTree) splitChild(node *Node, k, v []byte) error {
 	// find the appropriate child that you're about to enter into
-	idx, _ := node.findInsertPos(k)
+	idx := node.findIndex(k)
 	// load that child into a node
 	childNode, err := t.loadAsNode(node.getPtr(idx))
 	if err != nil {
 		return fmt.Errorf("could not read the appropriate subtree's page: %w", err)
 	}
 	// check if it's full, if yes break it down into 2 nodes
-	if childNode.overflow() { // TODO: parent must be able to look into the child and see if it's median when taken inside of it can cause issues or not
+	if childNode.overflow() {
 		leftChildNode, rightChildNode, medianIndex := childNode.split()
 		// persist the right node to disk
 		rightPageNum, err := t.copyToNewPage(rightChildNode)
@@ -185,24 +188,17 @@ func (t *BTree) preemptiveFix(node *Node, k, v []byte) error {
 		}
 		// insert median key into new root
 		medianKey, medianVal := childNode.getKV(medianIndex)
-		idx, err := node.insertSelf(medianKey, medianVal)
-		if err != nil {
-			return fmt.Errorf("failed to insert median key and value during preemptive fix: %w", err)
-		}
+		node.insertKV(medianKey, medianVal)
 		// set pointers to left and right children
 		node.setPtr(idx, leftPageNum)
-		// TODO: is this even appropriate CoW semantics? imagine a read coming in, it wouldn't be viewing a completely immutable state then
-		// ideally the node itself should be shifted to a new page and on the way back the page num of it should be adjusted on the parent
 		node.setPtr(idx+1, rightPageNum)
 	}
 	return nil
 }
 
-func (t *BTree) handleInsertionInLeafNode(node *Node, k, v []byte) (uint32, error) {
+func (t *BTree) insertIntoLeaf(node *Node, k, v []byte) (uint32, error) {
 	// attempt insertion on the leaf node
-	if _, err := node.insertSelf(k, v); err != nil {
-		return 0, err
-	}
+	node.insertKV(k, v)
 	// allocate and write to the new page
 	pageNum, err := t.copyToNewPage(node)
 	if err != nil {
@@ -212,9 +208,9 @@ func (t *BTree) handleInsertionInLeafNode(node *Node, k, v []byte) (uint32, erro
 	return pageNum, nil
 }
 
-func (t *BTree) handleInsertionInInternalNode(node *Node, k, v []byte) (uint32, error) {
+func (t *BTree) insertIntoInternal(node *Node, k, v []byte) (uint32, error) {
 	// figure out which node it should be
-	idx, _ := node.findInsertPos(k)
+	idx := node.findIndex(k)
 	// insert into the appropriate subtree
 	appropriateSubtree, err := t.loadAsNode(node.getPtr(idx))
 	if err != nil {
@@ -246,7 +242,7 @@ func (t *BTree) Search(k []byte) ([]byte, error) {
 
 func (t *BTree) search(node *Node, target []byte) ([]byte, error) {
 	// this function will give us an index such that target <= some_key_in_node
-	idx, _ := node.findInsertPos(target)
+	idx := node.findIndex(target)
 	// assuming the key is in the node, we will receive an index that is within bounds
 	// because if the key is out of bounds then it means that we must traverse down. the
 	// only reason we can receive an out of bound index is because we're using the a helper
@@ -273,4 +269,147 @@ func (t *BTree) search(node *Node, target []byte) ([]byte, error) {
 	}
 	// recursively search the subtree
 	return t.search(NewNode(buf), target)
+}
+
+func (t *BTree) Delete(k []byte) error {
+	rootNode, err := t.loadAsNode(t.root)
+	if err != nil {
+		return fmt.Errorf("failed to load and transform the root node: %w", err)
+	}
+	pageNum, err := t.delete(rootNode, k)
+	if err != nil {
+		return fmt.Errorf("failed to insert the key: %w", err)
+	}
+	t.pointMasterToNewRoot(pageNum)
+	return nil
+}
+
+func (t *BTree) delete(node *Node, k []byte) (uint32, error) {
+	// if node.getType() == NodeTypeInternal {
+	// 	if err := t.preemptiveDeleteFix(node, k); err != nil {
+	// 		return 0, err
+	// 	}
+	// }
+	switch node.getType() {
+	case NodeTypeLeaf:
+		return t.deleteFromLeaf(node, k)
+	case NodeTypeInternal:
+		return t.deleteFromInternal(node, k)
+	}
+	panic("should not have reached this point")
+}
+
+func (t *BTree) deleteFromLeaf(node *Node, k []byte) (uint32, error) {
+	// find index where key might be found
+	idx := node.findIndex(k)
+	// perform validation if the key even exists in this leaf node
+	// because if it does not then key does not exist at all
+	if idx >= node.getNKeys() {
+		return 0, ErrKeyNotFound
+	}
+	existingKey, _ := node.getKV(idx)
+	if !bytes.Equal(existingKey, k) {
+		return 0, ErrKeyNotFound
+	}
+	// perform a deletion in the internal node
+	node.deleteKV(idx)
+	pageNum, err := t.copyToNewPage(node)
+	if err != nil {
+		return 0, err
+	}
+	return pageNum, nil
+}
+
+func (t *BTree) deleteFromInternal(node *Node, k []byte) (uint32, error) {
+	idx := node.findIndex(k)
+	// check if this internal node itself contains the key
+	if idx < node.getNKeys() {
+		existingKey, _ := node.getKV(idx)
+		if bytes.Equal(existingKey, k) {
+			return t.deleteKeyFromInternal(node, k, idx)
+		}
+	}
+	// key is not in this node, recurse into appropriate child
+	childPageNum := node.getPtr(idx)
+	childNode, err := t.loadAsNode(childPageNum)
+	if err != nil {
+		return 0, err
+	}
+	newChildPageNum, err := t.delete(childNode, k)
+	if err != nil {
+		return 0, err
+	}
+	node.setPtr(idx, newChildPageNum)
+	return t.copyToNewPage(node)
+}
+
+func (t *BTree) deleteKeyFromInternal(node *Node, k []byte, idx uint16) (uint32, error) {
+	// case A1: borrow inorder predecessor from left child
+	leftChildNode, err := t.loadAsNode(node.getPtr(idx))
+	if err != nil {
+		return 0, err
+	}
+	if !leftChildNode.underflow() {
+		return t.borrowFromInorderPredecessor(node, leftChildNode, idx)
+	}
+	// case A2: borrow inorder successor from right child
+	rightChildNode, err := t.loadAsNode(node.getPtr(idx + 1))
+	if err != nil {
+		return 0, err
+	}
+	if !rightChildNode.underflow() {
+		return t.borrowFromInorderSuccessor(node, rightChildNode, idx)
+	}
+	// // // case A3: both children underflowing, merge and delete
+	// // if err := t.mergeChildren(node, idx); err != nil {
+	// // 	return 0, err
+	// // }
+	// recurse after merging
+	return t.delete(node, k)
+}
+
+func (t *BTree) borrowFromInorderPredecessor(node, leftChildNode *Node, idx uint16) (uint32, error) {
+	// helper that iteratively finds the predecessor
+	inorderPredecessor := func(node *Node) ([]byte, []byte) {
+		for node.getType() != NodeTypeLeaf {
+			pageNum := node.getPtr(node.getNKeys())
+			node, _ = t.loadAsNode(pageNum)
+		}
+		k, v := node.getKV(node.getNKeys() - 1)
+		return k, v
+	}
+	// use the predecessor kv pair
+	predecessor, _ := inorderPredecessor(leftChildNode)
+	// and replace it with the node's kv at idx
+	// node.updateKV(idx, predecessor, predVal) TODO: fix this next
+	// also get rid of the predecessor here itself
+	newLeftPageNum, err := t.delete(leftChildNode, predecessor)
+	if err != nil {
+		return 0, err
+	}
+	node.setPtr(idx, newLeftPageNum)
+	return t.copyToNewPage(node)
+}
+
+func (t *BTree) borrowFromInorderSuccessor(node, rightChildNode *Node, idx uint16) (uint32, error) {
+	// helper that iteratively finds the successor
+	inorderSuccessor := func(node *Node) ([]byte, []byte) {
+		for node.getType() != NodeTypeLeaf {
+			pageNum := node.getPtr(0)
+			node, _ = t.loadAsNode(pageNum)
+		}
+		k, v := node.getKV(0)
+		return k, v
+	}
+	// use the successor kv pair
+	successor, _ := inorderSuccessor(rightChildNode)
+	// and replace it with the node's kv at idx
+	// node.updateKV(idx, successor, succVal) TODO: fix this next
+	// also get rid of the successor here itself
+	newRightPageNum, err := t.delete(rightChildNode, successor)
+	if err != nil {
+		return 0, err
+	}
+	node.setPtr(idx+1, newRightPageNum)
+	return t.copyToNewPage(node)
 }

@@ -50,6 +50,7 @@ func TestBtreeSimpleInsert1(t *testing.T) {
 	k := []byte("ducky")
 	v := []byte("mehul")
 	if err := tree.Insert(k, v); err != nil {
+		fmt.Println("wut1")
 		t.Fatalf("insert failed: %v", err)
 	}
 
@@ -187,5 +188,106 @@ func BenchmarkInsert(b *testing.B) {
 		if err := tr.Insert(k, v); err != nil && err != ErrOverflow {
 			b.Fatal("insertion failed: %w", err)
 		}
+	}
+}
+
+func TestBtreeSimpleDelete1(t *testing.T) {
+	tree := setup(t)
+
+	k, v := []byte("ducky"), []byte("mehul")
+	if err := tree.Insert(k, v); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+	if err := tree.Delete(k); err != nil {
+		t.Fatalf("delete failed: %v", err)
+	}
+
+	// tree should be empty — search must fail
+	val, err := tree.Search(k)
+	if err == nil || val != nil {
+		t.Fatal("key should not exist after deletion")
+	}
+}
+
+func TestBtreeSimpleDelete2(t *testing.T) {
+	tree := setup(t)
+
+	keys := [][]byte{[]byte("apple"), []byte("banana"), []byte("cherry")}
+	for _, k := range keys {
+		if err := tree.Insert(k, []byte("mehul")); err != nil {
+			t.Fatalf("insert failed: %v", err)
+		}
+	}
+
+	// delete the middle key
+	if err := tree.Delete([]byte("banana")); err != nil {
+		t.Fatalf("delete failed: %v", err)
+	}
+
+	// deleted key must not exist
+	val, err := tree.Search([]byte("banana"))
+	if err == nil || val != nil {
+		t.Fatal("deleted key should not exist")
+	}
+
+	// remaining keys must still exist
+	for _, k := range [][]byte{[]byte("apple"), []byte("cherry")} {
+		v, err := tree.Search(k)
+		if err != nil || v == nil {
+			t.Fatalf("key %s should still exist after unrelated deletion", k)
+		}
+	}
+}
+
+func TestBtreeDeleteFirstKey(t *testing.T) {
+	tree := setup(t)
+
+	kNums := []string{"10", "15", "20", "21", "16", "12", "2"}
+	for _, kNum := range kNums {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		tree.Insert([]byte(k), []byte("mehul"))
+	}
+
+	// delete the lexicographically smallest key
+	smallest := strings.Repeat("A", 1338-len("10")) + "_10"
+	if err := tree.Delete([]byte(smallest)); err != nil {
+		t.Fatalf("delete failed: %v", err)
+	}
+
+	val, err := tree.Search([]byte(smallest))
+	if err == nil || val != nil {
+		t.Fatal("deleted key should not exist")
+	}
+}
+
+func TestBtreeDeleteLastKey(t *testing.T) {
+	tree := setup(t)
+
+	kNums := []string{"10", "15", "20", "21", "16", "12", "2"}
+	for _, kNum := range kNums {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		tree.Insert([]byte(k), []byte("mehul"))
+	}
+
+	// delete the lexicographically largest key
+	largest := strings.Repeat("A", 1338-len("2")) + "_2"
+	if err := tree.Delete([]byte(largest)); err != nil {
+		t.Fatalf("delete failed: %v", err)
+	}
+
+	val, err := tree.Search([]byte(largest))
+	if err == nil || val != nil {
+		t.Fatal("deleted key should not exist")
+	}
+}
+
+func TestBtreeDeleteNonExistentKey(t *testing.T) {
+	tree := setup(t)
+
+	tree.Insert([]byte("ducky"), []byte("mehul"))
+
+	err := tree.Delete([]byte("nonexistent"))
+	if err == nil {
+		t.Fatal("expected error when deleting nonexistent key")
 	}
 }

@@ -26,10 +26,7 @@ func TestNodeLeafNodeInsert1(t *testing.T) {
 	n := NewNode(buf)
 
 	k, v := []byte("ducky-24"), []byte("mehul")
-	_, err := n.insertSelf(k, v)
-	if err != nil {
-		t.Fatalf("got an error on insertion: %v", err)
-	}
+	n.insertKV(k, v)
 
 	k1, v1 := n.getKV(0)
 	if string(k) != string(k1) || string(v) != string(v1) {
@@ -40,15 +37,9 @@ func TestNodeLeafNodeInsert1(t *testing.T) {
 func TestNodeLeafNodeInsert2(t *testing.T) {
 	buf := make([]byte, 4096)
 	n := NewNode(buf)
-	_, err := n.insertSelf([]byte("ducky"), []byte("mehul"))
-	if err != nil {
-		t.Fatalf("got an error on insertion: %v", err)
-	}
+	n.insertKV([]byte("ducky"), []byte("mehul"))
 
-	_, err = n.insertSelf([]byte("ducky11"), []byte("mehul11"))
-	if err != nil {
-		t.Fatalf("got an error on second insertion: %v", err)
-	}
+	n.insertKV([]byte("ducky11"), []byte("mehul11"))
 
 	k, v := n.getKV(0)
 	if string(k) != "ducky" || string(v) != "mehul" {
@@ -65,11 +56,7 @@ func TestNodeLeafNodeInsert3(t *testing.T) {
 	n := NewNode(buf)
 	for i := range 174 {
 		k, v := []byte(fmt.Sprintf("ducky-%d", i)), []byte("mehul")
-		_, err := n.insertSelf(k, v)
-		if err != nil {
-			t.Fatalf("got an error on insertion: %v", err)
-			break
-		}
+		n.insertKV(k, v)
 	}
 
 	t.Logf("node is filled to %v/%v bytes\n", n.getSize(), PageSize)
@@ -88,10 +75,30 @@ func TestNodeLeafNodeInsert3(t *testing.T) {
 				}
 			}
 		}()
-		n.insertSelf(k1, v1)
+		n.insertKV(k1, v1)
 	}()
 
 	if !panicked {
 		t.Fatal("expected a panic on overflow but got none")
+	}
+}
+
+func TestNodeLeafNodeDelete1(t *testing.T) {
+	buf := make([]byte, 4096)
+	n := NewNode(buf)
+
+	for i := range 4 {
+		k, v := []byte(fmt.Sprintf("%d", i)), []byte("ZZZZZ")
+		n.insertKV(k, v)
+	}
+
+	n.setPtr(0, 12)
+
+	for range 4 {
+		n.deleteKV(n.getNKeys() - 1)
+	}
+
+	if n.getNKeys() != 0 {
+		t.Fatal("node should've had 0 keys")
 	}
 }
