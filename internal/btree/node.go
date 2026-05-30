@@ -178,6 +178,18 @@ func (node *Node) findIndex(target []byte) uint16 {
 	return idx + 1
 }
 
+func (node *Node) containsKey(k []byte) bool {
+	// check if this internal node itself contains the key
+	idx := node.findIndex(k)
+	if idx < node.getNKeys() {
+		existingKey, _ := node.getKV(idx)
+		if bytes.Equal(existingKey, k) {
+			return true
+		}
+	}
+	return false
+}
+
 // ------ below are almost all insertion related methods
 
 func (node *Node) split() (*Node, *Node, uint16) {

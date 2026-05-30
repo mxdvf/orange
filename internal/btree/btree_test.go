@@ -302,7 +302,7 @@ func TestBtreeDeleteCausesUnderflowAndRotatesRight(t *testing.T) {
 		tree.Insert([]byte(k), []byte("mehul"))
 	}
 
-	tree.print()
+	// tree.print()
 
 	// delete until a rotation is forced
 	toDelete := []string{"20", "21", "16"}
@@ -313,7 +313,7 @@ func TestBtreeDeleteCausesUnderflowAndRotatesRight(t *testing.T) {
 		}
 	}
 
-	tree.print()
+	// tree.print()
 
 	// verify remaining keys
 	remaining := []string{"10", "15", "12", "2"}
@@ -345,8 +345,6 @@ func TestBtreeDeleteCausesUnderflowAndRotatesLeft(t *testing.T) {
 		}
 	}
 
-	tree.print()
-
 	// verify remaining keys
 	remaining := []string{"15", "16", "20", "21"}
 	for _, kNum := range remaining {
@@ -354,6 +352,143 @@ func TestBtreeDeleteCausesUnderflowAndRotatesLeft(t *testing.T) {
 		v, err := tree.Search([]byte(k))
 		if err != nil || v == nil {
 			t.Fatalf("key %s should still exist", kNum)
+		}
+	}
+}
+
+func TestBtreeDeleteCausesMerge(t *testing.T) {
+	tree := setup(t)
+
+	kNums := []string{"10", "17", "20", "21", "16", "12", "2", "1", "3", "4", "11"}
+	for _, kNum := range kNums {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		tree.Insert([]byte(k), []byte("mehul"))
+	}
+
+	// delete enough keys to force a merge
+	toDelete := []string{"20", "21", "17", "16"}
+	for _, kNum := range toDelete {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		if err := tree.Delete([]byte(k)); err != nil {
+			t.Fatalf("delete failed for key %s: %v", kNum, err)
+		}
+	}
+
+	// verify deleted keys are gone
+	for _, kNum := range toDelete {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		val, err := tree.Search([]byte(k))
+		if err == nil || val != nil {
+			t.Fatalf("key %s should not exist after deletion", kNum)
+		}
+	}
+
+	// verify remaining keys intact
+	remaining := []string{"10", "12", "2", "1", "3", "4", "11"}
+	for _, kNum := range remaining {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		v, err := tree.Search([]byte(k))
+		if err != nil || v == nil {
+			t.Fatalf("key %s should still exist", kNum)
+		}
+	}
+}
+
+func TestBtreeDeleteFromInternalNodeTwice(t *testing.T) {
+	tree := setup(t)
+
+	kNums := []string{"10", "17", "20", "21", "16", "12", "2", "1", "3", "4", "11"}
+	for _, kNum := range kNums {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		tree.Insert([]byte(k), []byte("mehul"))
+	}
+
+	// delete a key that is likely sitting in an internal node as a separator
+	toDelete := []string{"17", "12"}
+	for _, kNum := range toDelete {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		if err := tree.Delete([]byte(k)); err != nil {
+			t.Fatalf("delete failed: %v", err)
+		}
+	}
+
+	for _, kNum := range toDelete {
+		val, err := tree.Search([]byte(kNum))
+		if err == nil || val != nil {
+			t.Fatal("deleted key should not exist")
+		}
+	}
+
+	// all other keys must remain
+	remaining := []string{"10", "20", "21", "16", "2", "1", "3", "4", "11"}
+	for _, kNum := range remaining {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		v, err := tree.Search([]byte(k))
+		if err != nil || v == nil {
+			t.Fatalf("key %s should still exist", kNum)
+		}
+	}
+}
+
+func TestBtreeUnboundedDelete(t *testing.T) {
+	tree := setup(t)
+	n := 2000
+
+	for i := range n {
+		k := strings.Repeat("A", 1338-len(strconv.Itoa(i))) + "_" + strconv.Itoa(i)
+		if err := tree.Insert([]byte(k), []byte("mehul")); err != nil {
+			t.Fatalf("insert failed at i=%d: %v", i, err)
+		}
+	}
+
+	// delete all keys in reverse order
+	for i := n - 1; i >= 0; i-- {
+		k := strings.Repeat("A", 1338-len(strconv.Itoa(i))) + "_" + strconv.Itoa(i)
+		if err := tree.Delete([]byte(k)); err != nil {
+			t.Fatalf("delete failed at i=%d: %v", i, err)
+		}
+	}
+
+	// none should exist
+	for i := range n {
+		k := strings.Repeat("A", 1338-len(strconv.Itoa(i))) + "_" + strconv.Itoa(i)
+		val, err := tree.Search([]byte(k))
+		if err == nil || val != nil {
+			t.Fatalf("key %d should not exist after deletion", i)
+		}
+	}
+}
+
+func TestBtreeInterleaveInsertDelete(t *testing.T) {
+	tree := setup(t)
+	inserted := map[string]bool{}
+
+	for i := range 500 {
+		k := strings.Repeat("A", 1338-len(strconv.Itoa(i))) + "_" + strconv.Itoa(i)
+		if err := tree.Insert([]byte(k), []byte("mehul")); err != nil {
+			t.Fatalf("insert failed at i=%d: %v", i, err)
+		}
+		inserted[k] = true
+
+		// every 10 inserts, delete the key from 5 steps ago
+		if i >= 5 && i%10 == 0 {
+			j := i - 5
+			delKey := strings.Repeat("A", 1338-len(strconv.Itoa(j))) + "_" + strconv.Itoa(j)
+			if err := tree.Delete([]byte(delKey)); err != nil {
+				t.Fatalf("delete failed at i=%d j=%d: %v", i, j, err)
+			}
+			inserted[delKey] = false
+		}
+	}
+
+	// verify final state
+	for k, exists := range inserted {
+		val, err := tree.Search([]byte(k))
+		if exists && (err != nil || val == nil) {
+			t.Fatalf("key %s should exist", k)
+		}
+		if !exists && (err == nil || val != nil) {
+			t.Fatalf("key %s should not exist", k)
 		}
 	}
 }

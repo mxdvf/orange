@@ -1,13 +1,15 @@
 # BTree
 
-A persistent copy-on-write B-Tree implementation, designed as an index for a key-value store. 
+A persistent copy-on-write B-Tree implementation, designed as an index for a key-value store.
 
 ## Design
+
 We load raw bytes as a single page from the disk. When it's in the memory, we wrap it with Node to access methods to manipulate those bytes.
 
 Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 
 ## Disk Layout (aka wire format)
+
 ```
 |-------------------------------------- 4096 bytes -------------------------------------|
 |   type    |   nkeys  |    pointers    |   offset-list  |       key-values             |
@@ -15,7 +17,8 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 ```
 
 ## Features
-- [ ] Persistent CoW B-tree: CoW enabling lock-free reads
+
+- [x] Persistent CoW B-tree: CoW enabling lock-free reads
 - [ ] Raw syscall (mmap + pwrite) I/O: no buffered stdlib, mmap for reads, pwrite for atomic page writes
 - [ ] CRC32 corruption detection: every page is checksummed on write and verified on read
 - [ ] Free list management: reclaims pages from deleted or CoW-replaced nodes
@@ -28,6 +31,7 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 - [ ] More to be determined: I don't know what I don't know
 
 ## API
+
 ```go
 // Write some data.
 err := btree.Insert([]byte("key"), []byte("val"))
@@ -43,4 +47,5 @@ err := btree.Delete([]byte("key1")) // nil
 ```
 
 ## License
+
 MIT.

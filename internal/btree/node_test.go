@@ -87,20 +87,23 @@ func TestNodeLeafNodeInsert4VisualizePtrBehaviour(t *testing.T) {
 	buf := make([]byte, 4096)
 	n := NewNode(buf)
 
-	for i := range 3 {
+	for i := range 1 {
 		k, v := []byte(fmt.Sprintf("%d", i)), []byte("ZZZZZ")
 		n.insertKV(k, v)
 	}
 
 	n.setPtr(0, 11)
 	n.setPtr(1, 12)
-	n.setPtr(2, 13)
-	n.setPtr(3, 14)
 
 	t.Log(n.data[:50])
 
-	k, v := []byte(fmt.Sprintf("%d", 3)), []byte("ZZZZZ")
+	k, v := []byte(fmt.Sprintf("%d", 2)), []byte("ZZZZZ")
+	danglingPtr1 := n.getPtr(n.getNKeys())
 	n.insertKV(k, v)
+	n.setPtr(2, 13)
+	danglingPtr2 := n.getPtr(n.getNKeys())
+	n.setPtr(n.getNKeys()-1, danglingPtr1)
+	n.setPtr(n.getNKeys(), danglingPtr2)
 
 	t.Log(n.data[:50])
 }
@@ -109,24 +112,17 @@ func TestNodeLeafNodeDelete1VisualizePtrBehaviour(t *testing.T) {
 	buf := make([]byte, 4096)
 	n := NewNode(buf)
 
-	for i := range 4 {
+	for i := range 1 {
 		k, v := []byte(fmt.Sprintf("%d", i)), []byte("ZZZZZ")
 		n.insertKV(k, v)
 	}
 
 	n.setPtr(0, 11)
 	n.setPtr(1, 12)
-	n.setPtr(2, 13)
-	n.setPtr(3, 14)
-	n.setPtr(4, 15)
 
 	t.Log(n.data[:50])
 
 	n.deleteKV(0)
-
-	t.Log(n.data[:50])
-
-	n.deleteKV(n.getNKeys() - 1)
 
 	t.Log(n.data[:50])
 }
