@@ -19,16 +19,12 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 ## Features
 
 - [x] Persistent CoW B-tree: CoW enabling lock-free reads
-- [ ] Raw syscall (mmap + pwrite) I/O: no buffered stdlib, mmap for reads, pwrite for atomic page writes
-- [ ] CRC32 corruption detection: every page is checksummed on write and verified on read
-- [ ] Free list management: reclaims pages from deleted or CoW-replaced nodes
-- [ ] Write-ahead log (WAL): crash recovery via a sequential log
 - [ ] fsync durability: ensure data survives OS crashes, not just process crashes
-- [ ] Benchmarking: evaluates r/w latency and throughput under concurrent workloads
+- [ ] Raw syscall I/O: mmap, fallocate, ftruncate, pwrite <!-- LOOK INTO THIS -->
+- [ ] Free list management: reclaims pages from deleted or CoW-replaced nodes
+- [ ] Write-ahead log (WAL): crash recovery via a sequential and durable log
 - [ ] SIMD-accelerated comparisons: vectorized key search within nodes, better cache utilization
-- [ ] TOAST-style storage: `The Oversized-Attribute Storage Technique (TOAST)` by Postgres
-- [ ] Stratified B-Tree: separate hot and cold layers, 100x faster writes, 10x faster reads
-- [ ] More to be determined: I don't know what I don't know
+- [ ] Benchmarking: evaluates r/w latency and throughput under concurrent workloads
 
 ## API
 
