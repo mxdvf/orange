@@ -47,6 +47,10 @@ func (pm *PageManager) Write(pageNum uint32, buf []byte) error {
 	return err
 }
 
+func (pm *PageManager) Fsync() error {
+	return pm.file.Sync()
+}
+
 func (pm *PageManager) len() int {
 	info, err := pm.file.Stat()
 	if err != nil {

@@ -111,7 +111,6 @@ func (t *BTree) Insert(k, v []byte) error {
 	}
 	// update master page using the pageNum root page
 	t.pointMasterToNewRoot(pageNum)
-
 	return nil
 }
 
@@ -146,7 +145,7 @@ func (t *BTree) splitRoot(rootNode *Node) (*Node, error) {
 func (t *BTree) insert(node *Node, k, v []byte) (uint32, error) {
 	// preemptive fix before ever touching a child node
 	if node.getType() == NodeTypeInternal {
-		if err := t.splitChild(node, k, v); err != nil {
+		if err := t.splitChild(node, k); err != nil {
 			return 0, err
 		}
 	}
@@ -165,7 +164,7 @@ func (t *BTree) insert(node *Node, k, v []byte) (uint32, error) {
 	panic("should not have reached this point")
 }
 
-func (t *BTree) splitChild(node *Node, k, v []byte) error {
+func (t *BTree) splitChild(node *Node, k []byte) error {
 	// find the appropriate child that you're about to enter into
 	idx := node.findIndex(k)
 	// load that child into a node
