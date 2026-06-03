@@ -61,16 +61,11 @@ func (t *BTree) copyToNewPage(node *Node) (uint32, error) {
 }
 
 func (t *BTree) pointMasterToNewRoot(pageNum uint32) error {
-	// read master page
-	buf, err := t.pm.Read(0)
-	if err != nil {
-		return fmt.Errorf("failed to read the master page: %w", err)
-	}
 	// update master page pointer to root
-	binary.BigEndian.PutUint32(buf[0:], pageNum)
-	// write back master page to disk
-	if err := t.pm.Write(0, buf); err != nil {
-		return fmt.Errorf("failed to write to master page: %w", err)
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], pageNum)
+	if err := t.pm.Write(0, buf[:]); err != nil {
+		return fmt.Errorf("failed to write master page: %w", err)
 	}
 	// also update the in-mem pointer
 	t.root = pageNum

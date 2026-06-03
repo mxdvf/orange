@@ -109,8 +109,21 @@ func (t *BTree) Insert(k, v []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to insert the key: %w", err)
 	}
+	// fsync barrier 1, this is because it might be possible that the
+	// kernel writes out-of-order as a result the master points to the
+	// new root but one of the pages within the tree are still old
+	if err := t.pm.Fsync(); err != nil {
+		return fmt.Errorf("failed to persist all the newly created pages: %w", err)
+	}
 	// update master page using the pageNum root page
-	t.pointMasterToNewRoot(pageNum)
+	if err := t.pointMasterToNewRoot(pageNum); err != nil {
+		return fmt.Errorf("failed to update the master to point to new root: %w", err)
+	}
+	// fsync barrier 2, as explained above, we can now safely move the
+	// master to point to the new root
+	if err := t.pm.Fsync(); err != nil {
+		return fmt.Errorf("failed to persist the master page: %w", err)
+	}
 	return nil
 }
 
@@ -284,15 +297,23 @@ func (t *BTree) Delete(k []byte) error {
 		return fmt.Errorf("failed to insert the key: %w", err)
 	}
 	// check if root became empty after deletion (root merge collapsed it)
-	newRoot, err := t.loadAsNode(pageNum)
+	pageNum, err = t.fillRoot(pageNum)
 	if err != nil {
-		return err
+		panic("should have fixed the root here")
 	}
-	if newRoot.getNKeys() == 0 && newRoot.getType() == NodeTypeInternal {
-		// root is empty, its only child becomes the new root
-		pageNum = newRoot.getPtr(0)
+	// fsync barrier 1
+	if err := t.pm.Fsync(); err != nil {
+		return fmt.Errorf("failed to persist the new pages: %w", err)
 	}
-	return t.pointMasterToNewRoot(pageNum)
+	// point master to the new root
+	if err := t.pointMasterToNewRoot(pageNum); err != nil {
+		return fmt.Errorf("failed to update the master to point to new root: %w", err)
+	}
+	// fsync barrier 2
+	if err := t.pm.Fsync(); err != nil {
+		return fmt.Errorf("failed to point master to the new node: %w", err)
+	}
+	return nil
 }
 
 func (t *BTree) delete(node *Node, k []byte) (uint32, error) {
@@ -566,4 +587,16 @@ func (t *BTree) borrowFromInorderSuccessor(node, rightChildNode *Node, idx uint1
 	}
 	node.setPtr(idx+1, newRightPageNum)
 	return t.copyToNewPage(node)
+}
+
+func (t *BTree) fillRoot(pageNum uint32) (uint32, error) {
+	newRoot, err := t.loadAsNode(pageNum)
+	if err != nil {
+		return 0, err
+	}
+	if newRoot.getNKeys() == 0 && newRoot.getType() == NodeTypeInternal {
+		// root is empty, its only child becomes the new root
+		pageNum = newRoot.getPtr(0)
+	}
+	return pageNum, nil
 }
