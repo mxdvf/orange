@@ -19,7 +19,7 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 ## Features
 
 - [x] Persistent CoW B-tree: CoW enabling lock-free reads
-- [ ] fsync durability: ensure data survives OS crashes, not just process crashes
+- [x] fsync durability: ensure data survives OS crashes, not just process crashes
 - [ ] Raw syscall I/O: mmap, fallocate, ftruncate, pwrite <!-- LOOK INTO THIS -->
 - [ ] Free list management: reclaims pages from deleted or CoW-replaced nodes
 - [ ] Write-ahead log (WAL): crash recovery via a sequential and durable log
