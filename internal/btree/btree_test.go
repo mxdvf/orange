@@ -181,16 +181,6 @@ func TestBtreeUnboundedInsert(t *testing.T) {
 	}
 }
 
-func BenchmarkInsert(b *testing.B) {
-	tr := setup(nil)
-	for i := 0; i < b.N; i++ {
-		k, v := []byte(fmt.Sprintf("kacky-%v", i)), []byte("mehul")
-		if err := tr.Insert(k, v); err != nil && err != ErrOverflow {
-			b.Fatal("insertion failed: %w", err)
-		}
-	}
-}
-
 func TestBtreeSimpleDelete1(t *testing.T) {
 	tree := setup(t)
 
@@ -489,6 +479,22 @@ func TestBtreeInterleaveInsertDelete(t *testing.T) {
 		}
 		if !exists && (err == nil || val != nil) {
 			t.Fatalf("key %s should not exist", k)
+		}
+	}
+}
+
+func BenchmarkInsert(b *testing.B) {
+	tr := setup(nil)
+	val := []byte("mehul")
+	var i uint64
+
+	for b.Loop() {
+		// Fast string concatenation + a single slice allocation
+		k := []byte("kacky-" + strconv.FormatUint(i, 10))
+		i++
+
+		if err := tr.Insert(k, val); err != nil && err != ErrOverflow {
+			b.Fatalf("insertion failed: %v", err)
 		}
 	}
 }

@@ -50,7 +50,7 @@ func NewBTree(filename string, sync bool) (*BTree, error) {
 	// defer closing the file in their program, although we're using
 	// fsync but it's still should be a safe practice to provide this
 	// initialize root and master pages
-	pm := pagemanager.NewPageManager(fd, PageSize, sync)
+	pm := pagemanager.NewPageManager(fd, PageSize)
 	root, err := loadOrCreateRoot(pm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize root and master nodes: %v", err)
@@ -197,6 +197,8 @@ func (t *BTree) splitChild(node *Node, k, v []byte) error {
 }
 
 func (t *BTree) insertIntoLeaf(node *Node, k, v []byte) (uint32, error) {
+	// TODO: check if the key is already present, if that's the case, simply
+	// override the key with the updated value. it needs to be done here.
 	// attempt insertion on the leaf node
 	node.insertKV(k, v)
 	// allocate and write to the new page
@@ -211,6 +213,8 @@ func (t *BTree) insertIntoLeaf(node *Node, k, v []byte) (uint32, error) {
 func (t *BTree) insertIntoInternal(node *Node, k, v []byte) (uint32, error) {
 	// figure out which node it should be
 	idx := node.findIndex(k)
+	// TODO: check if the key is already present, if that's the case, simply
+	// override the key with the updated value. it needs to be done here.
 	// insert into the appropriate subtree
 	appropriateSubtree, err := t.loadAsNode(node.getPtr(idx))
 	if err != nil {

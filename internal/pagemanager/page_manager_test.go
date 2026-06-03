@@ -9,7 +9,6 @@ import (
 
 const (
 	MockPageSizeForTesting = 4096
-	MockSyncFlagForTesting = true
 )
 
 func setup(t *testing.T) *PageManager {
@@ -18,7 +17,7 @@ func setup(t *testing.T) *PageManager {
 		t.Fatalf("error opening file: %v", err)
 	}
 
-	return NewPageManager(fd, MockPageSizeForTesting, MockSyncFlagForTesting)
+	return NewPageManager(fd, MockPageSizeForTesting)
 }
 
 func TestPageManagerAllocate(t *testing.T) {
