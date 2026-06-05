@@ -1,8 +1,8 @@
 # BTree
 
-A persistent copy-on-write B-Tree implementation, designed as an index for a key-value store.
+A persistent, crash-safe, copy-on-write B-Tree storage engine built from scratch in Go with zero dependencies.
 
-## Design
+## Overview
 
 We load raw bytes as a single page from the disk. When it's in the memory, we wrap it with Node to access methods to manipulate those bytes.
 
@@ -18,11 +18,11 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 
 ## Features
 
-- [x] Persistent CoW B-tree: CoW enabling lock-free reads
+- [x] Persistent CoW B-tree: immutable pages enabling lock-free reads
 - [x] fsync durability: ensure data survives OS crashes, not just process crashes
-- [ ] Raw syscall I/O: mmap, fallocate, ftruncate, pwrite <!-- LOOK INTO THIS -->
-- [ ] Free list management: reclaims pages from deleted or CoW-replaced nodes
-- [ ] SIMD-accelerated comparisons: vectorized key search within nodes, better cache utilization
+- [ ] Page allocator: fallocate and ftruncate to pre-allocate pages (requires conditional build for macos/linux)
+- [ ] Memory-mapped I/O: replace pread/pwrite with memory-mapped file access
+- [ ] Free list management: track and reclaim pages from deleted or CoW-replaced nodes
 - [ ] Benchmarking: evaluates r/w latency and throughput under concurrent workloads
 
 ## API
@@ -40,6 +40,14 @@ btree.Search([]byte("key90")) // nil, ErrKeyNotFound
 // Delete some data.
 err := btree.Delete([]byte("key1")) // nil
 ```
+
+## Special Mentions
+
+- https://blog.minhazav.dev/memory-sharing-in-linux/#misc-mmap-is-faster-than-reading-a-file-in-blocks
+- https://transactional.blog/blog/2025-torn-writes
+- https://www.youtube.com/watch?v=OtxCzIHOMk4
+- https://www.usenix.org/system/files/fast25-jeon.pdf
+- A lot of theory came with assistance from Claude
 
 ## License
 
