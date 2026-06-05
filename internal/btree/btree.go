@@ -111,7 +111,7 @@ func (t *BTree) Insert(k, v []byte) error {
 	}
 	// fsync barrier 1, this is because it might be possible that the
 	// kernel writes out-of-order as a result the master points to the
-	// new root but one of the pages within the tree are still old
+	// new root but few of the pages within the tree are still old
 	if err := t.pm.Fsync(); err != nil {
 		return fmt.Errorf("failed to persist all the newly created pages: %w", err)
 	}
@@ -119,8 +119,10 @@ func (t *BTree) Insert(k, v []byte) error {
 	if err := t.pointMasterToNewRoot(pageNum); err != nil {
 		return fmt.Errorf("failed to update the master to point to new root: %w", err)
 	}
-	// fsync barrier 2, as explained above, we can now safely move the
-	// master to point to the new root
+	// fsync barrier 2, as explained above, it's now safe to move the
+	// master to point to the new root because at this point we can guarantee
+	// that the all data nodes are persisted safely to the disk and that traversing
+	// the tree with the new root will be perfeclty alright
 	if err := t.pm.Fsync(); err != nil {
 		return fmt.Errorf("failed to persist the master page: %w", err)
 	}

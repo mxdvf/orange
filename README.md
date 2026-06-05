@@ -22,7 +22,6 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 - [x] fsync durability: ensure data survives OS crashes, not just process crashes
 - [ ] Raw syscall I/O: mmap, fallocate, ftruncate, pwrite <!-- LOOK INTO THIS -->
 - [ ] Free list management: reclaims pages from deleted or CoW-replaced nodes
-- [ ] Write-ahead log (WAL): crash recovery via a sequential and durable log
 - [ ] SIMD-accelerated comparisons: vectorized key search within nodes, better cache utilization
 - [ ] Benchmarking: evaluates r/w latency and throughput under concurrent workloads
 
@@ -41,6 +40,19 @@ btree.Search([]byte("key90")) // nil, ErrKeyNotFound
 // Delete some data.
 err := btree.Delete([]byte("key1")) // nil
 ```
+
+## Decisions
+
+#### Decision 1: took me 13 continous hours to figure this out
+
+there can be two types of corruption
+
+In modern SSDs, there
+
+1. 4K sector disks with 4Kn emnulation -- simple 2-fsync barrier would do the trick (can also be solved by a WAL) = so for backward compatibility we will do WAL
+2. 4K sector disks with 512e emulation -- requires a WAL because it suffers from torn writes
+
+since most disks still operate as 512e as default, i just have to use a WAL method
 
 ## License
 
