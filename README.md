@@ -41,19 +41,6 @@ btree.Search([]byte("key90")) // nil, ErrKeyNotFound
 err := btree.Delete([]byte("key1")) // nil
 ```
 
-## Decisions
-
-#### Decision 1: took me 13 continous hours to figure this out
-
-there can be two types of corruption
-
-In modern SSDs, there
-
-1. 4K sector disks with 4Kn emnulation -- simple 2-fsync barrier would do the trick (can also be solved by a WAL) = so for backward compatibility we will do WAL
-2. 4K sector disks with 512e emulation -- requires a WAL because it suffers from torn writes
-
-since most disks still operate as 512e as default, i just have to use a WAL method
-
 ## License
 
 MIT.
