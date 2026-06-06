@@ -11,7 +11,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/mxdvf/superfastkv/internal/pagemanager"
+	"github.com/mxdvf/btree/internal/pagemanager"
 )
 
 const (

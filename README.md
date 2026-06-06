@@ -20,7 +20,7 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 
 - [x] Persistent CoW B-tree: immutable pages enabling lock-free reads
 - [x] fsync durability: ensure data survives OS crashes, not just process crashes
-- [ ] Page allocator: fallocate and ftruncate to pre-allocate pages (requires conditional build for macos/linux)
+- [x] Page allocator: fallocate/fcntl to pre-allocate pages (requires conditional build for macos/linux)
 - [ ] Memory-mapped I/O: replace pread/pwrite with memory-mapped file access
 - [ ] Free list management: track and reclaim pages from deleted or CoW-replaced nodes
 - [ ] Benchmarking: evaluates r/w latency and throughput under concurrent workloads
@@ -47,7 +47,7 @@ err := btree.Delete([]byte("key1")) // nil
 - https://transactional.blog/blog/2025-torn-writes
 - https://www.youtube.com/watch?v=OtxCzIHOMk4
 - https://www.usenix.org/system/files/fast25-jeon.pdf
-- A lot of theory came with assistance from Claude
+- A lot of discussions with Claude (Anthropic) because I don't know what I don't know
 
 ## License
 

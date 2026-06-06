@@ -31,8 +31,14 @@ func TestPageManagerAllocate(t *testing.T) {
 		t.Fatalf("page number expected: 1, got: %d", latestPageNum)
 	}
 
-	if pm.len() != 2 {
-		t.Fatalf("total pages expected: 2, got: %d", pm.len())
+	info, err := pm.file.Stat()
+	if err != nil {
+		panic(err)
+	}
+	fileLen := int(info.Size() / int64(pm.maxPageSize))
+
+	if fileLen != 2 {
+		t.Fatalf("total pages expected: 2, got: %d", fileLen)
 	}
 }
 

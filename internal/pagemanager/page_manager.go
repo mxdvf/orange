@@ -4,30 +4,22 @@
 package pagemanager
 
 import (
-	"io"
 	"os"
 )
 
+const (
+	PreAllocatePageNum = 80 // defines a fixed number by which our file is extended aka 80 pages are allocated at once
+)
+
 type PageManager struct {
-	file        *os.File
-	maxPageSize uint32
+	file           *os.File
+	maxPageSize    uint32
+	currentPageNum uint32
+	endPageNum     uint32
 }
 
 func NewPageManager(fd *os.File, maxPageSize uint32) *PageManager {
-	return &PageManager{fd, maxPageSize}
-}
-
-func (pm *PageManager) Allocate() (uint32, error) {
-	// create a new empty page, set the
-	buf := make([]byte, 4096)
-	offset, err := pm.file.Seek(0, io.SeekEnd)
-	if err != nil {
-		return 0, err
-	}
-	if _, err := pm.file.Write(buf); err != nil {
-		return 0, err
-	}
-	return uint32(offset / 4096), nil
+	return &PageManager{fd, maxPageSize, 0, 0}
 }
 
 func (pm *PageManager) Read(pageNum uint32) ([]byte, error) {
@@ -49,12 +41,4 @@ func (pm *PageManager) Write(pageNum uint32, buf []byte) error {
 
 func (pm *PageManager) Fsync() error {
 	return pm.file.Sync()
-}
-
-func (pm *PageManager) len() int {
-	info, err := pm.file.Stat()
-	if err != nil {
-		panic(err)
-	}
-	return int(info.Size() / int64(pm.maxPageSize))
 }
