@@ -19,6 +19,10 @@ func (pm *PageManager) Allocate() (uint32, error) {
 	// since we've reached the end of the file, we allocate a fixed
 	// a chunk of pages using PageAllocateNumBytes
 	extendByLen := int64(pm.maxPageSize) * PreAllocatePageNum
+	// TODO: this is the place causing an error when i attempt to insert
+	// 1 million keys to my btree, there's something up with these flags
+	// that i need to read about, or maybe first do a clean attempt with
+	// the first flag then attempt with the second flag as a fallback
 	fstore := unix.Fstore_t{
 		Flags:      unix.F_ALLOCATECONTIG | unix.F_ALLOCATEALL,
 		Posmode:    unix.F_PEOFPOSMODE,
