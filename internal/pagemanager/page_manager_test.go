@@ -2,6 +2,7 @@ package pagemanager
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
 	"os"
 	"strings"
@@ -13,12 +14,23 @@ const (
 	MockSync     = false
 )
 
+func init() {
+	err := os.MkdirAll("test/", 0755)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
 func setup(t *testing.T) *PageManager {
-	fd, err := os.OpenFile("test.bin", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
+	fd, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if t != nil {
+		t.Logf("running test case for file: %v", filename)
+	}
 	if err != nil {
 		t.Fatalf("error opening file: %v", err)
 	}
-
 	return NewPageManager(fd, MockSync, MockPageSize)
 }
 
