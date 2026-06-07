@@ -176,7 +176,7 @@ func (t *BTree) insert(node *Node, k, v []byte) (uint32, error) {
 		// upwards
 		return t.insertIntoInternal(node, k, v)
 	}
-	panic("should not have reached this point")
+	panic("should not have reached this point, insert, node can only be internal/leaf")
 }
 
 func (t *BTree) splitChild(node *Node, k []byte) error {
@@ -330,7 +330,7 @@ func (t *BTree) delete(node *Node, k []byte) (uint32, error) {
 	case NodeTypeInternal:
 		return t.deleteFromInternal(node, k)
 	}
-	panic("should not have reached this point")
+	panic("should not have reached this point, delete, node can only be internal/leaf")
 }
 
 func (t *BTree) deleteFromLeaf(node *Node, k []byte) (uint32, error) {

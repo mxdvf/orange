@@ -501,19 +501,19 @@ func BenchmarkInsert(b *testing.B) {
 }
 
 func BenchmarkSearch(b *testing.B) {
-	// pre-populate the tree with 1 million keys before benchmarking
+	// pre-populate the tree with 100k keys before benchmarking with fsync switched off
 	tr, filename := setup(nil, false)
 	val := []byte("mehul")
-	const numKeys = 1_000_000
+	const numKeys = 100_000
 	for i := range uint64(numKeys) {
 		k := []byte("kacky-" + strconv.FormatUint(i, 10))
 		if err := tr.Insert(k, val); err != nil && err != ErrOverflow {
 			b.Fatalf("setup insertion failed: %v", err)
 		}
 	}
-	tr.pm.Fsync()
 
 	tr, _ = NewBTree(filename, true)
+	tr.pm.Fsync()
 	var i uint64
 	// reset timer so setup cost is excluded from benchmark
 	b.ResetTimer()
