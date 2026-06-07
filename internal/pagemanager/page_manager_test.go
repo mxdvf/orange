@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"math/rand"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -38,8 +39,8 @@ func TestPageManagerAllocate(t *testing.T) {
 	}
 	fileLen := int(info.Size() / int64(pm.maxPageSize))
 
-	if fileLen != 2 {
-		t.Fatalf("total pages expected: 2, got: %d", fileLen)
+	if fileLen != PreAllocatePageNum {
+		t.Fatalf("total pages expected: %d, got: %d", PreAllocatePageNum, fileLen)
 	}
 }
 
@@ -69,6 +70,64 @@ func TestPageManagerReadWrite(t *testing.T) {
 
 	if res := bytes.Compare(target, buf1); res != 0 {
 		t.Fatalf("target and retrieved bytes did not match, expected: %v, got: %v, res: %d", string(target), string(buf1), res)
+	}
+}
+
+// pages are sequential and non-overlapping
+func TestAllocateSequential(t *testing.T) {
+	pm := setup(t)
+	seen := map[uint32]bool{}
+	for range 100 {
+		pageNum, err := pm.Allocate()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if seen[pageNum] {
+			t.Fatalf("duplicate page number returned: %d", pageNum)
+		}
+		seen[pageNum] = true
+	}
+}
+
+// data written to a page survives across the chunk boundary
+// (this is where your bug would have been caught)
+func TestAllocateDataSurvivesGrowth(t *testing.T) {
+	pm := setup(t)
+	// write to last page before chunk boundary
+	lastBeforeGrowth := PreAllocatePageNum - 1
+	data := []byte(strings.Repeat("X", 4096))
+	if err := pm.Write(uint32(lastBeforeGrowth), data); err != nil {
+		t.Fatal(err)
+	}
+	// force growth past the chunk boundary
+	for range PreAllocatePageNum + 1 {
+		if _, err := pm.Allocate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// read it back
+	got, err := pm.Read(uint32(lastBeforeGrowth))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, data) {
+		t.Fatal("data corrupted across chunk boundary")
+	}
+}
+
+// allocating exactly at chunk boundaries doesn't skip or duplicate
+func TestAllocateChunkBoundary(t *testing.T) {
+	pm := setup(t)
+	prev := uint32(0)
+	for i := range PreAllocatePageNum * 3 {
+		pageNum, err := pm.Allocate()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i > 0 && pageNum != prev+1 {
+			t.Fatalf("gap or duplicate at boundary: got %d, want %d", pageNum, prev+1)
+		}
+		prev = pageNum
 	}
 }
 
