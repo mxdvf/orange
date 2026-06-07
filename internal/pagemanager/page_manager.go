@@ -13,13 +13,14 @@ const (
 
 type PageManager struct {
 	file           *os.File
+	sync           bool // flag for fsync durability
 	maxPageSize    uint32
 	currentPageNum uint32
 	endPageNum     uint32
 }
 
-func NewPageManager(fd *os.File, maxPageSize uint32) *PageManager {
-	return &PageManager{fd, maxPageSize, 0, 0}
+func NewPageManager(fd *os.File, sync bool, maxPageSize uint32) *PageManager {
+	return &PageManager{fd, sync, maxPageSize, 0, 0}
 }
 
 func (pm *PageManager) Read(pageNum uint32) ([]byte, error) {
@@ -40,5 +41,8 @@ func (pm *PageManager) Write(pageNum uint32, buf []byte) error {
 }
 
 func (pm *PageManager) Fsync() error {
-	return pm.file.Sync()
+	if pm.sync {
+		return pm.file.Sync()
+	}
+	return nil
 }

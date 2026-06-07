@@ -50,7 +50,7 @@ func NewBTree(filename string, sync bool) (*BTree, error) {
 	// defer closing the file in their program, although we're using
 	// fsync but it's still should be a safe practice to provide this
 	// initialize root and master pages
-	pm := pagemanager.NewPageManager(fd, PageSize)
+	pm := pagemanager.NewPageManager(fd, sync, PageSize)
 	root, err := loadOrCreateRoot(pm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize root and master nodes: %v", err)

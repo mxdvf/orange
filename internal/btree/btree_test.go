@@ -18,21 +18,21 @@ func init() {
 	}
 }
 
-func setup(t *testing.T) *BTree {
+func setup(t *testing.T, sync bool) (*BTree, string) {
 	filename := fmt.Sprintf("test/test-%v.bin", rand.Int())
 	if t != nil {
 		t.Logf("running test case for file: %v", filename)
 	}
-	tree, err := NewBTree(filename, false)
+	tree, err := NewBTree(filename, sync)
 	if err != nil {
 		t.Fatalf("cannot initialize tree: %v", err)
 	}
 
-	return tree
+	return tree, filename
 }
 
 func TestBtreeInitialize(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	r, err := tree.pm.Read(tree.root)
 	if err != nil {
@@ -45,7 +45,7 @@ func TestBtreeInitialize(t *testing.T) {
 }
 
 func TestBtreeSimpleInsert1(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	k := []byte("ducky")
 	v := []byte("mehul")
@@ -71,7 +71,7 @@ func TestBtreeSimpleInsert1(t *testing.T) {
 }
 
 func TestBtreeSimpleInsert2(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	k := []byte("ducky")
 	v := []byte("mehul")
@@ -113,7 +113,7 @@ func TestBtreeSimpleInsert2(t *testing.T) {
 }
 
 func TestBtreeFillUntilRootSplits1Level(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	kNums := []string{"10", "15", "20", "21", "16", "12", "2"}
 
@@ -137,7 +137,7 @@ func TestBtreeFillUntilRootSplits1Level(t *testing.T) {
 }
 
 func TestBtreeFillUntilRootSplits2Level(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	kNums := []string{"10", "17", "20", "21", "16", "12", "2", "1", "3", "4", "11"}
 	for _, kNum := range kNums {
@@ -160,7 +160,7 @@ func TestBtreeFillUntilRootSplits2Level(t *testing.T) {
 }
 
 func TestBtreeUnboundedInsert(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, false)
 
 	for i := range 10000 {
 		k := strings.Repeat("A", 1338-len(strconv.Itoa(i))) + "_" + strconv.Itoa(i)
@@ -173,7 +173,7 @@ func TestBtreeUnboundedInsert(t *testing.T) {
 		k := strings.Repeat("A", 1338-len(strconv.Itoa(i))) + "_" + strconv.Itoa(i)
 		v, err := tree.Search([]byte(k))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("search error: %v", err)
 		}
 		if v == nil {
 			t.Fatalf("value exists because the key has been inserted: %v", k)
@@ -182,7 +182,7 @@ func TestBtreeUnboundedInsert(t *testing.T) {
 }
 
 func TestBtreeSimpleDelete1(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	k, v := []byte("ducky"), []byte("mehul")
 	if err := tree.Insert(k, v); err != nil {
@@ -200,7 +200,7 @@ func TestBtreeSimpleDelete1(t *testing.T) {
 }
 
 func TestBtreeSimpleDelete2(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	keys := [][]byte{[]byte("apple"), []byte("banana"), []byte("cherry")}
 	for _, k := range keys {
@@ -230,7 +230,7 @@ func TestBtreeSimpleDelete2(t *testing.T) {
 }
 
 func TestBtreeDeleteFirstKey(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	kNums := []string{"10", "15", "20", "21", "16", "12", "2"}
 	for _, kNum := range kNums {
@@ -251,7 +251,7 @@ func TestBtreeDeleteFirstKey(t *testing.T) {
 }
 
 func TestBtreeDeleteLastKey(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	kNums := []string{"10", "15", "20", "21", "16", "12", "2"}
 	for _, kNum := range kNums {
@@ -272,7 +272,7 @@ func TestBtreeDeleteLastKey(t *testing.T) {
 }
 
 func TestBtreeDeleteNonExistentKey(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	tree.Insert([]byte("ducky"), []byte("mehul"))
 
@@ -284,7 +284,7 @@ func TestBtreeDeleteNonExistentKey(t *testing.T) {
 
 func TestBtreeDeleteCausesUnderflowAndRotatesRight(t *testing.T) {
 	// force a right rotation: left sibling must have enough keys to donate
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	kNums := []string{"10", "15", "20", "21", "16", "12", "2"}
 	for _, kNum := range kNums {
@@ -318,7 +318,7 @@ func TestBtreeDeleteCausesUnderflowAndRotatesRight(t *testing.T) {
 
 func TestBtreeDeleteCausesUnderflowAndRotatesLeft(t *testing.T) {
 	// force a right rotation: left sibling must have enough keys to donate
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	kNums := []string{"10", "15", "20", "21", "16", "12", "2"}
 	for _, kNum := range kNums {
@@ -347,7 +347,7 @@ func TestBtreeDeleteCausesUnderflowAndRotatesLeft(t *testing.T) {
 }
 
 func TestBtreeDeleteCausesMerge(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	kNums := []string{"10", "17", "20", "21", "16", "12", "2", "1", "3", "4", "11"}
 	for _, kNum := range kNums {
@@ -385,7 +385,7 @@ func TestBtreeDeleteCausesMerge(t *testing.T) {
 }
 
 func TestBtreeDeleteFromInternalNodeTwice(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 
 	kNums := []string{"10", "17", "20", "21", "16", "12", "2", "1", "3", "4", "11"}
 	for _, kNum := range kNums {
@@ -421,7 +421,7 @@ func TestBtreeDeleteFromInternalNodeTwice(t *testing.T) {
 }
 
 func TestBtreeUnboundedDelete(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, false)
 	n := 2000
 
 	for i := range n {
@@ -450,7 +450,7 @@ func TestBtreeUnboundedDelete(t *testing.T) {
 }
 
 func TestBtreeInterleaveInsertDelete(t *testing.T) {
-	tree := setup(t)
+	tree, _ := setup(t, true)
 	inserted := map[string]bool{}
 
 	for i := range 500 {
@@ -484,10 +484,11 @@ func TestBtreeInterleaveInsertDelete(t *testing.T) {
 }
 
 func BenchmarkInsert(b *testing.B) {
-	tr := setup(nil)
+	tr, _ := setup(nil, true)
 	val := []byte("mehul")
 	var i uint64
 
+	b.ResetTimer()
 	for b.Loop() {
 		// Fast string concatenation + a single slice allocation
 		k := []byte("kacky-" + strconv.FormatUint(i, 10))
@@ -495,6 +496,35 @@ func BenchmarkInsert(b *testing.B) {
 
 		if err := tr.Insert(k, val); err != nil && err != ErrOverflow {
 			b.Fatalf("insertion failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkSearch(b *testing.B) {
+	// pre-populate the tree with 1 million keys before benchmarking
+	tr, filename := setup(nil, false)
+	val := []byte("mehul")
+	const numKeys = 1_000_000
+	for i := range uint64(numKeys) {
+		k := []byte("kacky-" + strconv.FormatUint(i, 10))
+		if err := tr.Insert(k, val); err != nil && err != ErrOverflow {
+			b.Fatalf("setup insertion failed: %v", err)
+		}
+	}
+	tr.pm.Fsync()
+
+	tr, _ = NewBTree(filename, true)
+	var i uint64
+	// reset timer so setup cost is excluded from benchmark
+	b.ResetTimer()
+	for b.Loop() {
+		// scatter across the full key space — not sequential
+		// this forces the btree to traverse different paths each time
+		idx := (i * 6364136223846793005) % numKeys
+		k := []byte("kacky-" + strconv.FormatUint(idx, 10))
+		i++
+		if _, err := tr.Search(k); err != nil {
+			b.Fatalf("search failed: %v", err)
 		}
 	}
 }
