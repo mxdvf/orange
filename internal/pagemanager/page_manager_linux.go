@@ -19,9 +19,9 @@ func (pm *PageManager) Allocate() (uint32, error) {
 	// since we've reached the end of the file, we allocate a fixed
 	// a chunk of pages using PreAllocatePageNum
 	fd := int(pm.file.Fd())
-	currentByteOffset := int64(pm.currentPageNum * pm.maxPageSize)
-	extendByLen := int64(pm.maxPageSize * PreAllocatePageNum)
-	if err := unix.Fallocate(fd, 0, currentByteOffset, extendByLen); err != nil {
+	currentByteOffset := int64(pm.maxPageSize * pm.currentPageNum)
+	extendByByteLen := int64(pm.maxPageSize * PreAllocatePageNum)
+	if err := unix.Fallocate(fd, 0, currentByteOffset, extendByByteLen); err != nil {
 		return 0, fmt.Errorf("failed to allocate pages: %w", err)
 	}
 	// shift end page num to last page allocated
