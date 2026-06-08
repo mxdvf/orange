@@ -21,9 +21,9 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 - [x] Persistent CoW B-tree: immutable pages enabling lock-free reads
 - [x] fsync durability: ensure data survives OS crashes, not just process crashes
 - [x] Page allocator: fallocate/fcntl to pre-allocate pages (requires conditional build for macos/linux)
-- [ ] Memory-mapped I/O: replace pread/pwrite with memory-mapped file access
-- [ ] WAL: append-only log with LSN, group commit and crash recovery with CRC32 validation
+- [x] Memory-mapped I/O: replace traditional I/O with memory-mapping using mmap() and mremap()
 - [ ] Free list management: track and reclaim pages from deleted or CoW-replaced nodes
+- [ ] WAL: append-only log with LSN, group commit and crash recovery with CRC32 validation
 - [ ] Benchmarking: evaluates r/w latency and throughput under concurrent workloads
 
 ## API

@@ -4,6 +4,7 @@ package pagemanager
 
 import (
 	"fmt"
+	"os"
 
 	"golang.org/x/sys/unix"
 )
@@ -40,10 +41,40 @@ func (pm *PageManager) Allocate() (uint32, error) {
 	if err := unix.Ftruncate(int(fd), currentSize+extendByByteLen); err != nil {
 		return 0, fmt.Errorf("failed to ftruncate the file metadata: %w", err)
 	}
+	// since the allocation has happened irrespective of it being the first
+	// or subsequent times, we can now set up our mmap region either by
+	// initializing it for the first time or remapping a known region
+	switch pm.endPageNum {
+	case 0:
+		var err error
+		pm.mmapData, err = initMmap(pm.file)
+		if err != nil {
+			return 0, fmt.Errorf("failed to initialize the mmap region: %w", err)
+		}
+	default:
+		var err error
+		pm.mmapData, err = extendMmap(pm.mmapData, pm.file)
+		if err != nil {
+			return 0, fmt.Errorf("failed to unmap and mmap to a new region: %w", err)
+		}
+	}
 	// set the end page num to the last physically allocated block number
 	// and also increase the current page num
 	pm.endPageNum += PreAllocatePageNum
 	currentPageNum := pm.currentPageNum
 	pm.currentPageNum++
 	return currentPageNum, nil
+}
+
+func extendMmap(oldMmapData []byte, file *os.File) ([]byte, error) {
+	// unmap the old region
+	if err := unix.Munmap(oldMmapData); err != nil {
+		return nil, fmt.Errorf("failed to munmap the old region: %w", err)
+	}
+	// remap the region by initializing a larger mmap'ed region
+	data, err := initMmap(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mremap the region: %w", err)
+	}
+	return data, nil
 }

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func init() {
@@ -483,6 +484,8 @@ func TestBtreeInterleaveInsertDelete(t *testing.T) {
 	}
 }
 
+// benchmarks
+
 func BenchmarkInsert(b *testing.B) {
 	tr, _ := setup(nil, true)
 	val := []byte("mehul")
@@ -502,7 +505,7 @@ func BenchmarkInsert(b *testing.B) {
 
 func BenchmarkSearch(b *testing.B) {
 	// pre-populate the tree with 100k keys before benchmarking with fsync switched off
-	tr, filename := setup(nil, false)
+	tr, _ := setup(nil, false)
 	val := []byte("mehul")
 	const numKeys = 100_000
 	for i := range uint64(numKeys) {
@@ -512,8 +515,8 @@ func BenchmarkSearch(b *testing.B) {
 		}
 	}
 
-	tr, _ = NewBTree(filename, true)
-	tr.pm.Fsync()
+	time.Sleep(2 * time.Second)
+
 	var i uint64
 	// reset timer so setup cost is excluded from benchmark
 	b.ResetTimer()
