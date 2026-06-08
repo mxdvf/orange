@@ -1,15 +1,26 @@
-package btree
+package nodemanager
 
 import (
 	"bytes"
 	"encoding/binary"
 )
 
+const (
+	MaxAllowedKVLen = 1344 // 1344 bytes, fit 3 keys in a node to maintain b-tree structure
+
+	HeaderSize  = 4 // 2 + 2 = 4 bytes
+	PointerSize = 4 // 4 bytes
+	OffsetSize  = 2 // 2 bytes
+	KeyLenSize  = 2 // 2 bytes
+	ValLenSize  = 2 // 2 bytes
+)
+
 type Node struct {
 	// wire format:
 	// type  |  nkeys |   pointers  |  offset-array	 |		     key-values
 	//  2B   |   2B   |  nkeys * 4B |  	nkeys * 2B	 |  [klen: 2B][k][vlen: 2B][v]
-	data []byte
+	data     []byte
+	pageSize int
 }
 
 // assumptions:
@@ -18,41 +29,48 @@ type Node struct {
 // 3. offset list points to the start of the next to-be-inserted KV pair (a logically empty space to start from)
 
 func NewNode(buf []byte) *Node {
-	return &Node{data: buf}
+	if len(buf) != 4096 {
+		panic("we only accept 4096-byte buffers")
+	}
+	return &Node{data: buf, pageSize: len(buf)}
 }
 
-func (node *Node) getSize() uint16 {
-	lastIdx := node.getNKeys() - 1
+func (node *Node) Data() []byte {
+	return node.data
+}
+
+func (node *Node) GetSize() uint16 {
+	lastIdx := node.GetNKeys() - 1
 	kvRelativeLen := node.getOffset(lastIdx) + node.getKVLen(lastIdx)
 	return node.getHeaderAndMetadataLen() + kvRelativeLen
 }
 
-func (node *Node) getType() uint16 {
+func (node *Node) GetType() uint16 {
 	return binary.BigEndian.Uint16(node.data[0:])
 }
 
-func (node *Node) setType(t uint16) {
+func (node *Node) SetType(t uint16) {
 	binary.BigEndian.PutUint16(node.data[0:], t)
 }
 
-func (node *Node) getNKeys() uint16 {
+func (node *Node) GetNKeys() uint16 {
 	return binary.BigEndian.Uint16(node.data[2:])
 }
 
 func (node *Node) incrementNKeys() {
-	binary.BigEndian.PutUint16(node.data[2:], node.getNKeys()+1)
+	binary.BigEndian.PutUint16(node.data[2:], node.GetNKeys()+1)
 }
 
 func (node *Node) decrementNKeys() {
-	binary.BigEndian.PutUint16(node.data[2:], node.getNKeys()-1)
+	binary.BigEndian.PutUint16(node.data[2:], node.GetNKeys()-1)
 }
 
 func (node *Node) getHeaderAndMetadataLen() uint16 {
-	return HeaderSize + PointerSize*(node.getNKeys()+1) + OffsetSize*node.getNKeys()
+	return HeaderSize + PointerSize*(node.GetNKeys()+1) + OffsetSize*node.GetNKeys()
 }
 
 func (node *Node) offsetPos(idx uint16) uint16 {
-	return HeaderSize + PointerSize*(node.getNKeys()+1) + OffsetSize*idx
+	return HeaderSize + PointerSize*(node.GetNKeys()+1) + OffsetSize*idx
 }
 
 func (node *Node) getOffset(idx uint16) uint16 {
@@ -66,16 +84,16 @@ func (node *Node) setOffset(idx, offset uint16) {
 }
 
 func (node *Node) kvPos(idx uint16) uint16 {
-	if node.getNKeys() == 0 {
-		return HeaderSize + PointerSize*(node.getNKeys()+1) + OffsetSize*node.getNKeys() + node.getOffset(0)
+	if node.GetNKeys() == 0 {
+		return HeaderSize + PointerSize*(node.GetNKeys()+1) + OffsetSize*node.GetNKeys() + node.getOffset(0)
 	}
-	if idx == node.getNKeys() {
+	if idx == node.GetNKeys() {
 		return node.kvPos(idx-1) + node.getKVLen(idx-1)
 	}
-	return HeaderSize + PointerSize*(node.getNKeys()+1) + OffsetSize*node.getNKeys() + node.getOffset(idx)
+	return HeaderSize + PointerSize*(node.GetNKeys()+1) + OffsetSize*node.GetNKeys() + node.getOffset(idx)
 }
 
-func (node *Node) getKV(idx uint16) ([]byte, []byte) {
+func (node *Node) GetKV(idx uint16) ([]byte, []byte) {
 	// following a seek based approach, we extract what we need
 	// and move the seek forward
 	pos := node.kvPos(idx)
@@ -107,12 +125,12 @@ func (node *Node) setKV(k, v []byte, pos uint16) {
 	copy(node.data[pos:pos+uint16(len(v))], v)
 }
 
-func (node *Node) updateKV(idx uint16, k, v []byte) {
+func (node *Node) UpdateKV(idx uint16, k, v []byte) {
 	// simple approach: delete then insert
-	// works correctly because updateKV is only called when
+	// works correctly because UpdateKV is only called when
 	// new key has same or similar size (inorder predecessor/successor)
-	node.deleteKV(idx)
-	node.insertKV(k, v)
+	node.DeleteKV(idx)
+	node.InsertKV(k, v)
 }
 
 func (node *Node) getKVLen(idx uint16) uint16 {
@@ -126,12 +144,12 @@ func (node *Node) ptrPos(idx uint16) uint16 {
 	return HeaderSize + PointerSize*idx
 }
 
-func (node *Node) getPtr(idx uint16) uint32 {
+func (node *Node) GetPtr(idx uint16) uint32 {
 	pos := HeaderSize + PointerSize*idx
 	return binary.BigEndian.Uint32(node.data[pos:])
 }
 
-func (node *Node) setPtr(idx uint16, ptr uint32) {
+func (node *Node) SetPtr(idx uint16, ptr uint32) {
 	pos := HeaderSize + PointerSize*idx
 	binary.BigEndian.PutUint32(node.data[pos:], ptr)
 }
@@ -140,10 +158,10 @@ func (node *Node) getTotalLenIfInserted(k, v []byte) uint16 {
 	return uint16(len(k)+len(v)) + OffsetSize + PointerSize + KeyLenSize + ValLenSize
 }
 
-func (node *Node) overflow() bool {
+func (node *Node) Overflow() bool {
 	// a node overflows when it no longer has room for the worst-case key
 	// (aka one that's 1344B) that could be promoted from its child into itself
-	// during a split which means a median key of max size. this was a bug that
+	// during a Split which means a median key of max size. this was a bug that
 	// took me 6 days to figure out, although i admit it was an oversight on my part.
 
 	// TODO: parent must be able to look into the child and see if it's median when taken
@@ -151,23 +169,23 @@ func (node *Node) overflow() bool {
 	// we must do a second preemptive fix on the node (aka parent) we're on right now.
 	// this is the only way that we can save those extra bytes, a bit messy and complex
 	// but good ROI.
-	return node.getSize() > PageSize-MaxAllowedKVLen
+	return int(node.GetSize()) > node.pageSize-MaxAllowedKVLen
 }
 
-func (node *Node) underflow() bool {
+func (node *Node) Underflow() bool {
 	// minimum degree t=2, so minimum keys = t-1 = 1
 	// a node underflows when it has only 1 key and we need to delete from it
-	return node.getNKeys() <= 1
+	return node.GetNKeys() <= 1
 }
 
-func (node *Node) findIndex(target []byte) uint16 {
-	if node.getNKeys() <= 0 {
+func (node *Node) FindIndex(target []byte) uint16 {
+	if node.GetNKeys() <= 0 {
 		return 0
 	}
 	// loop over all keys to find the appropriate insertion position
 	var idx uint16
-	for idx = range node.getNKeys() {
-		k, _ := node.getKV(idx)
+	for idx = range node.GetNKeys() {
+		k, _ := node.GetKV(idx)
 		if res := bytes.Compare(target, k); res == -1 || res == 0 {
 			return idx
 		}
@@ -178,11 +196,11 @@ func (node *Node) findIndex(target []byte) uint16 {
 	return idx + 1
 }
 
-func (node *Node) containsKey(k []byte) bool {
+func (node *Node) ContainsKey(k []byte) bool {
 	// check if this internal node itself contains the key
-	idx := node.findIndex(k)
-	if idx < node.getNKeys() {
-		existingKey, _ := node.getKV(idx)
+	idx := node.FindIndex(k)
+	if idx < node.GetNKeys() {
+		existingKey, _ := node.GetKV(idx)
 		if bytes.Equal(existingKey, k) {
 			return true
 		}
@@ -192,44 +210,44 @@ func (node *Node) containsKey(k []byte) bool {
 
 // ------ below are almost all insertion related methods
 
-func (node *Node) split() (*Node, *Node, uint16) {
+func (node *Node) Split() (*Node, *Node, uint16) {
 	// check for the median key
-	medianIndex := node.getNKeys() / 2
+	medianIndex := node.GetNKeys() / 2
 	// initialize a new node
-	leftNode := NewNode(make([]byte, 4096))
-	rightNode := NewNode(make([]byte, 4096))
+	leftNode := NewNode(make([]byte, node.pageSize))
+	rightNode := NewNode(make([]byte, node.pageSize))
 	// set node type
-	rightNode.setType(node.getType())
-	leftNode.setType(node.getType())
+	rightNode.SetType(node.GetType())
+	leftNode.SetType(node.GetType())
 	// from here on, we will operate on the left half of each component of the node
 	// i.e [0, medianIndex), but remember pointers is always 1 more than nkeys
 	for idx := uint16(0); idx < medianIndex; idx++ {
-		k, v := node.getKV(idx)
-		leftNode.insertKV(k, v)
+		k, v := node.GetKV(idx)
+		leftNode.InsertKV(k, v)
 	}
 	// pointer always goes one more than the nunber of keys, hence different loop
 	for idx := uint16(0); idx < medianIndex+1; idx++ {
-		leftNode.setPtr(idx, node.getPtr(idx))
+		leftNode.SetPtr(idx, node.GetPtr(idx))
 	}
 	// from here, we will operate on the right half of each component of the node
 	// i.e [medianIndex+1, nkeys), but again pointers is always 1 more than nkeys
-	for idx := medianIndex + 1; idx < node.getNKeys(); idx++ {
-		k, v := node.getKV(idx)
-		rightNode.insertKV(k, v)
+	for idx := medianIndex + 1; idx < node.GetNKeys(); idx++ {
+		k, v := node.GetKV(idx)
+		rightNode.InsertKV(k, v)
 	}
-	for idx := medianIndex + 1; idx < node.getNKeys()+1; idx++ {
-		rightNode.setPtr(idx-medianIndex-1, node.getPtr(idx))
+	for idx := medianIndex + 1; idx < node.GetNKeys()+1; idx++ {
+		rightNode.SetPtr(idx-medianIndex-1, node.GetPtr(idx))
 	}
 	// return
 	return leftNode, rightNode, medianIndex
 }
 
-func (node *Node) insertKV(k, v []byte) {
-	if node.getSize()+node.getTotalLenIfInserted(k, v) >= PageSize {
-		panic("illegal node, it should have been split by a preemptive fix")
+func (node *Node) InsertKV(k, v []byte) {
+	if node.GetSize()+node.getTotalLenIfInserted(k, v) >= uint16(node.pageSize) {
+		panic("illegal node, it should have been Split by a preemptive fix")
 	}
 	// find insertion point
-	insertIdx := node.findIndex(k)
+	insertIdx := node.FindIndex(k)
 	insertPos := node.kvPos(insertIdx)
 	// increment nkeys
 	node.incrementNKeys()
@@ -262,17 +280,17 @@ func (node *Node) shiftRight(idx, pos, kvLen uint16) {
 }
 
 func (node *Node) updateOffsets1(idx, totalLen uint16) {
-	for i := idx + 1; i < node.getNKeys(); i++ {
+	for i := idx + 1; i < node.GetNKeys(); i++ {
 		node.setOffset(i, node.getOffset(i)+totalLen)
 	}
 }
 
 // ------- below are almost all deletion related methods
 
-func (node *Node) deleteKV(idx uint16) {
+func (node *Node) DeleteKV(idx uint16) {
 	// find deletion point
 	kvLen, kvStart := node.getKVLen(idx), node.kvPos(idx)
-	nodeSize := node.getSize()
+	nodeSize := node.GetSize()
 	// remove kv by shifting everything left
 	copy(node.data[kvStart:], node.data[kvStart+kvLen:])
 	clear(node.data[nodeSize-kvLen:])
@@ -293,7 +311,7 @@ func (node *Node) deleteKV(idx uint16) {
 }
 
 func (node *Node) updateOffsets2(idx, kvLen uint16) {
-	for i := idx; i < node.getNKeys(); i++ {
+	for i := idx; i < node.GetNKeys(); i++ {
 		node.setOffset(i, node.getOffset(i)-kvLen)
 	}
 }

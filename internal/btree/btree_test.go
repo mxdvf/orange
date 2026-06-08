@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mxdvf/btree/internal/nodemanager"
 )
 
 func init() {
@@ -40,7 +42,7 @@ func TestBtreeInitialize(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	if NewNode(r).getType() != NodeTypeLeaf {
+	if nodemanager.NewNode(r).GetType() != NodeTypeLeaf {
 		t.Fatal("root should've been a leaf page the very first time")
 	}
 }
@@ -56,13 +58,13 @@ func TestBtreeSimpleInsert1(t *testing.T) {
 	}
 
 	buf, _ := tree.pm.Read(tree.root)
-	node := NewNode(buf)
+	node := nodemanager.NewNode(buf)
 
-	if node.getNKeys() != 1 {
+	if node.GetNKeys() != 1 {
 		t.Fatal("node should have only 1 key")
 	}
 
-	k1, v1 := node.getKV(0)
+	k1, v1 := node.GetKV(0)
 	if res := bytes.Compare(k, k1); res != 0 {
 		t.Fatal("keys don't match up")
 	}
@@ -81,11 +83,11 @@ func TestBtreeSimpleInsert2(t *testing.T) {
 	}
 
 	buf, _ := tree.pm.Read(tree.root)
-	node := NewNode(buf)
-	if node.getNKeys() != 1 {
+	node := nodemanager.NewNode(buf)
+	if node.GetNKeys() != 1 {
 		t.Fatal("node should have only 1 key")
 	}
-	k1, v1 := node.getKV(0)
+	k1, v1 := node.GetKV(0)
 	if res := bytes.Compare(k, k1); res != 0 {
 		t.Fatal("keys don't match up")
 	}
@@ -100,11 +102,11 @@ func TestBtreeSimpleInsert2(t *testing.T) {
 	}
 
 	buf, _ = tree.pm.Read(tree.root)
-	node = NewNode(buf)
-	if node.getNKeys() != 2 {
+	node = nodemanager.NewNode(buf)
+	if node.GetNKeys() != 2 {
 		t.Fatal("node should have 2 keys")
 	}
-	k1, v1 = node.getKV(1)
+	k1, v1 = node.GetKV(1)
 	if res := bytes.Compare(k, k1); res != 0 {
 		t.Fatal("keys don't match up")
 	}

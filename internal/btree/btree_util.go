@@ -3,6 +3,8 @@ package btree
 import (
 	"encoding/binary"
 	"fmt"
+
+	"github.com/mxdvf/btree/internal/nodemanager"
 )
 
 func (t *BTree) print() {
@@ -18,15 +20,15 @@ func (t *BTree) print() {
 				continue
 			}
 			buf, _ := t.pm.Read(pageNum)
-			n := NewNode(buf)
+			n := nodemanager.NewNode(buf)
 			// visual print logic
-			fmt.Printf("=-----==-----Level: %d-----==-----= (node size: %v)\n", level, n.getSize())
-			fmt.Println(string(n.data))
+			fmt.Printf("=-----==-----Level: %d-----==-----= (node size: %v)\n", level, n.GetSize())
+			fmt.Println(string(n.Data()))
 			fmt.Println("=-------==------==------==-------=")
 			// only append children if the current node is internal
-			if n.getType() == NodeTypeInternal {
-				for idx := range n.getNKeys() + 1 {
-					queue = append(queue, n.getPtr(idx))
+			if n.GetType() == NodeTypeInternal {
+				for idx := range n.GetNKeys() + 1 {
+					queue = append(queue, n.GetPtr(idx))
 				}
 				queue = append(queue, 0)
 			}
@@ -37,23 +39,23 @@ func (t *BTree) print() {
 	}
 }
 
-func (t *BTree) loadAsNode(pageNum uint32) (*Node, error) {
+func (t *BTree) loadAsNode(pageNum uint32) (*nodemanager.Node, error) {
 	// load the root node from disk
 	root, err := t.pm.Read(pageNum)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load the root node: %w", err)
 	}
 	// transform to node
-	return NewNode(root), err
+	return nodemanager.NewNode(root), err
 }
 
-func (t *BTree) copyToNewPage(node *Node) (uint32, error) {
+func (t *BTree) copyToNewPage(node *nodemanager.Node) (uint32, error) {
 	pageNum, err := t.pm.Allocate()
 	if err != nil {
 		return 0, err
 	}
 	// write the updated bytes to the newly allocated page
-	if err := t.pm.Write(pageNum, node.data); err != nil {
+	if err := t.pm.Write(pageNum, node.Data()); err != nil {
 		return 0, err
 	}
 	// return the newly allocated page num
