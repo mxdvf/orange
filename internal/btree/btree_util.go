@@ -72,11 +72,13 @@ func (t *BTree) handleMasterPage(pageNum uint32) error {
 	binary.BigEndian.PutUint32(buf[0:], pageNum)
 	// step 2: flush the freelist to the master
 	flSize := binary.BigEndian.Uint32(buf[4:])
-	for idx, flItem := range t.freelist {
-		start := 8 + int(flSize)*4 + idx*4
-		binary.BigEndian.PutUint32(buf[start:], flItem)
+	if int(flSize)+len(t.freelist) < (PageSize-MasterHeaderSize)/PointerSize {
+		for idx, flItem := range t.freelist {
+			start := 8 + int(flSize)*4 + idx*4
+			binary.BigEndian.PutUint32(buf[start:], flItem)
+		}
+		binary.BigEndian.PutUint32(buf[4:], flSize+uint32(len(t.freelist)))
 	}
-	binary.BigEndian.PutUint32(buf[4:], flSize+uint32(len(t.freelist)))
 
 	// write everything at once to the master
 	if err := t.pm.Write(0, buf); err != nil {

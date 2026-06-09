@@ -29,6 +29,8 @@ const (
 	OffsetSize  = 2    // 2 bytes
 	KeyLenSize  = 2    // 2 bytes
 	ValLenSize  = 2    // 2 bytes
+
+	MasterHeaderSize = 8 // 4 + 4 = 8 bytes
 )
 
 var (
