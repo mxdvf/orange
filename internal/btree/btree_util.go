@@ -22,7 +22,7 @@ func (t *BTree) print() {
 			buf, _ := t.pm.Read(pageNum)
 			n := nodemanager.NewNode(buf)
 			// visual print logic
-			fmt.Printf("=-----==-----Level: %d-----==-----= (node size: %v)\n", level, n.GetSize())
+			fmt.Printf("=-----==-----Level: %d-----==-----= (node size: %v, page_num: %v)\n", level, n.GetSize(), pageNum)
 			fmt.Println(string(n.Data()))
 			fmt.Println("=-------==------==------==-------=")
 			// only append children if the current node is internal
@@ -62,14 +62,28 @@ func (t *BTree) copyToNewPage(node *nodemanager.Node) (uint32, error) {
 	return pageNum, nil
 }
 
-func (t *BTree) pointMasterToNewRoot(pageNum uint32) error {
-	// update master page pointer to root
-	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:], pageNum)
-	if err := t.pm.Write(0, buf[:]); err != nil {
+func (t *BTree) handleMasterPage(pageNum uint32) error {
+	// load master into memory
+	buf, err := t.pm.Read(0)
+	if err != nil {
+		return fmt.Errorf("failed to read master page for an RMW cycle: %w", err)
+	}
+	// step 1: update master page pointer to root
+	binary.BigEndian.PutUint32(buf[0:], pageNum)
+	// step 2: flush the freelist to the master
+	flSize := binary.BigEndian.Uint32(buf[4:])
+	for idx, flItem := range t.freelist {
+		start := 8 + int(flSize)*4 + idx*4
+		binary.BigEndian.PutUint32(buf[start:], flItem)
+	}
+	binary.BigEndian.PutUint32(buf[4:], flSize+uint32(len(t.freelist)))
+
+	// write everything at once to the master
+	if err := t.pm.Write(0, buf); err != nil {
 		return fmt.Errorf("failed to write master page: %w", err)
 	}
-	// also update the in-mem pointer
+	// also update the in-mem pointer and zero-out the freelist
 	t.root = pageNum
+	t.freelist = make([]uint32, 0)
 	return nil
 }

@@ -37,8 +37,9 @@ var (
 )
 
 type BTree struct {
-	root uint32
-	pm   *pagemanager.PageManager
+	root     uint32
+	freelist []uint32
+	pm       *pagemanager.PageManager
 }
 
 func NewBTree(filename string, sync bool) (*BTree, error) {
@@ -61,8 +62,9 @@ func NewBTree(filename string, sync bool) (*BTree, error) {
 	}
 	// initialize btree
 	return &BTree{
-		root: root,
-		pm:   pm,
+		root:     root,
+		freelist: make([]uint32, 0),
+		pm:       pm,
 	}, nil
 }
 
@@ -107,6 +109,9 @@ func (t *BTree) Insert(k, v []byte) error {
 		if err != nil {
 			return fmt.Errorf("failed to setup the new root: %w", err)
 		}
+		// ideally you would want to persist the newly split root here,
+		// it does not really matter much because if the insert fails
+		// mid-way, the split can just happen again next time
 	}
 	// from here, the wrapper takes over (node) and all operations
 	// are thus performed on the wrapper
@@ -121,7 +126,8 @@ func (t *BTree) Insert(k, v []byte) error {
 		return fmt.Errorf("failed to persist all the newly created pages: %w", err)
 	}
 	// update master page using the pageNum root page
-	if err := t.pointMasterToNewRoot(pageNum); err != nil {
+	t.freelist = append(t.freelist, t.root)
+	if err := t.handleMasterPage(pageNum); err != nil {
 		return fmt.Errorf("failed to update the master to point to new root: %w", err)
 	}
 	// fsync barrier 2, as explained above, it's now safe to move the
@@ -194,6 +200,7 @@ func (t *BTree) splitChild(node *nodemanager.Node, k []byte) error {
 	}
 	// check if it's full, if yes break it down into 2 nodes
 	if childNode.Overflow() {
+		t.freelist = append(t.freelist, node.GetPtr(idx))
 		leftChildNode, rightChildNode, medianIndex := childNode.Split()
 		// persist the right node to disk
 		rightPageNum, err := t.copyToNewPage(rightChildNode)
@@ -235,11 +242,15 @@ func (t *BTree) insertIntoInternal(node *nodemanager.Node, k, v []byte) (uint32,
 	// TODO: check if the key is already present, if that's the case, simply
 	// override the key with the updated value. it needs to be done here.
 	// insert into the appropriate subtree
-	appropriateSubtree, err := t.loadAsNode(node.GetPtr(idx))
+
+	// this is the child node which will get be abandoned once we recurse into it,
+	// and the t.insert returns the new child node page num
+	t.freelist = append(t.freelist, node.GetPtr(idx))
+	appropriateSubtreeNode, err := t.loadAsNode(node.GetPtr(idx))
 	if err != nil {
 		return 0, fmt.Errorf("could not read the appropriate subtree's page: %w", err)
 	}
-	childPageNum, err := t.insert(appropriateSubtree, k, v)
+	childPageNum, err := t.insert(appropriateSubtreeNode, k, v)
 	if err != nil {
 		return 0, err
 	}
@@ -313,7 +324,7 @@ func (t *BTree) Delete(k []byte) error {
 		return fmt.Errorf("failed to persist the new pages: %w", err)
 	}
 	// point master to the new root
-	if err := t.pointMasterToNewRoot(pageNum); err != nil {
+	if err := t.handleMasterPage(pageNum); err != nil {
 		return fmt.Errorf("failed to update the master to point to new root: %w", err)
 	}
 	// fsync barrier 2
@@ -366,8 +377,7 @@ func (t *BTree) deleteFromInternal(node *nodemanager.Node, k []byte) (uint32, er
 		return t.deleteKeyFromInternal(node, k, idx)
 	}
 	// key is not in this node, recurse into appropriate child
-	childPageNum := node.GetPtr(idx)
-	childNode, err := t.loadAsNode(childPageNum)
+	childNode, err := t.loadAsNode(node.GetPtr(idx))
 	if err != nil {
 		return 0, err
 	}
