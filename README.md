@@ -22,7 +22,7 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 - [x] fsync durability: ensure data survives OS crashes, not just process crashes
 - [x] Page allocator: fallocate/fcntl to pre-allocate pages (requires conditional build for macos/linux)
 - [x] Memory-mapped I/O: replace traditional I/O with memory-mapping using mmap() and mremap()
-- [ ] Free list management: track and reclaim pages from deleted or CoW-replaced nodes
+- [x] Free list management: track and reclaim pages from deleted or CoW-replaced nodes
 - [ ] WAL: append-only log with LSN, group commit and crash recovery with CRC32 validation
 - [ ] Benchmarking: evaluates r/w latency and throughput under concurrent workloads
 
