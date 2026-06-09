@@ -1,3 +1,4 @@
+// Package nodemanager implements useful methods on top of raw bytes fetched from the disk.
 package nodemanager
 
 import (
@@ -16,15 +17,19 @@ const (
 )
 
 type Node struct {
-	// wire format:
+	// wire format for data pages:
 	// type  |  nkeys |   pointers  |  offset-array	 |		     key-values
 	//  2B   |   2B   |  nkeys * 4B |  	nkeys * 2B	 |  [klen: 2B][k][vlen: 2B][v]
+
+	// wire format for master page:
+	// root page  |  free list size	 |	free list page nums
+	//  	4B   		|				4B		 		 |  	[pagenum: 4B]
 	data     []byte
 	pageSize int
 }
 
 // assumptions:
-// 1. duplicate keys are rewritten
+// 1. TODO(easy): duplicate keys are rewritten (right now they end up next to each other, should require a simple check)
 // 2. offset list contains relative positioning: check kvPos()
 // 3. offset list points to the start of the next to-be-inserted KV pair (a logically empty space to start from)
 
