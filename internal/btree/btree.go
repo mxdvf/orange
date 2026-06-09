@@ -11,8 +11,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/mxdvf/btree/internal/nodemanager"
-	"github.com/mxdvf/btree/internal/pagemanager"
+	"github.com/mxdvf/orange/internal/nodemanager"
+	"github.com/mxdvf/orange/internal/pagemanager"
 )
 
 const (
