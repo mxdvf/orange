@@ -232,6 +232,45 @@ func TestBtreeSimpleDelete2(t *testing.T) {
 	}
 }
 
+func TestBtreeSimpleDelete3(t *testing.T) {
+	tree, _ := setup(t, true)
+
+	kNums := []string{"10", "15", "20", "21", "16", "12", "2", "22"}
+	for _, kNum := range kNums {
+		k := strings.Repeat("A", 1338-len(kNum)) + "_" + kNum
+		if err := tree.Insert([]byte(k), []byte("mehul")); err != nil {
+			t.Fatalf("got an error on insertion: %v", err)
+		}
+	}
+
+	kNumsToDelete := []string{"10", "12", "22", "16"}
+	for _, k := range kNumsToDelete {
+		k = strings.Repeat("A", 1338-len(k)) + "_" + k
+		if err := tree.Delete([]byte(k)); err != nil {
+			t.Fatalf("delete failed: %v", err)
+		}
+	}
+
+	// deleted key must not exist
+	for _, k := range kNumsToDelete {
+		k = strings.Repeat("A", 1338-len(k)) + "_" + k
+		val, err := tree.Search([]byte(k))
+		if err == nil || val != nil {
+			t.Fatal("deleted key should not exist")
+		}
+	}
+
+	// remaining keys must still exist
+	kNumsNotDeleted := []string{"15", "20", "21", "2"}
+	for _, k := range kNumsNotDeleted {
+		k = strings.Repeat("A", 1338-len(k)) + "_" + k
+		v, err := tree.Search([]byte(k))
+		if err != nil || v == nil {
+			t.Fatalf("key %s should still exist after unrelated deletion", k)
+		}
+	}
+}
+
 func TestBtreeDeleteFirstKey(t *testing.T) {
 	tree, _ := setup(t, true)
 

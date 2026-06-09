@@ -312,7 +312,7 @@ func (t *BTree) Delete(k []byte) error {
 	}
 	pageNum, err := t.delete(rootNode, k)
 	if err != nil {
-		return fmt.Errorf("failed to insert the key: %w", err)
+		return fmt.Errorf("failed to delete the key: %w", err)
 	}
 	// check if root became empty after deletion (root merge collapsed it)
 	pageNum, err = t.fillRoot(pageNum)
@@ -324,6 +324,7 @@ func (t *BTree) Delete(k []byte) error {
 		return fmt.Errorf("failed to persist the new pages: %w", err)
 	}
 	// point master to the new root
+	t.freelist = append(t.freelist, t.root)
 	if err := t.handleMasterPage(pageNum); err != nil {
 		return fmt.Errorf("failed to update the master to point to new root: %w", err)
 	}
@@ -385,6 +386,7 @@ func (t *BTree) deleteFromInternal(node *nodemanager.Node, k []byte) (uint32, er
 	if err != nil {
 		return 0, err
 	}
+	t.freelist = append(t.freelist, node.GetPtr(idx))
 	node.SetPtr(idx, newChildPageNum)
 	return t.copyToNewPage(node)
 }
@@ -406,6 +408,7 @@ func (t *BTree) fillChild(node *nodemanager.Node, k []byte) error {
 			return fmt.Errorf("could not load left sibling: %w", err)
 		}
 		if !leftSibling.Underflow() {
+			t.freelist = append(t.freelist, node.GetPtr(idx-1), node.GetPtr(idx))
 			return t.rotateRight(node, leftSibling, childNode, idx)
 		}
 	}
@@ -416,13 +419,16 @@ func (t *BTree) fillChild(node *nodemanager.Node, k []byte) error {
 			return fmt.Errorf("could not load right sibling: %w", err)
 		}
 		if !rightSibling.Underflow() {
+			t.freelist = append(t.freelist, node.GetPtr(idx), node.GetPtr(idx+1))
 			return t.rotateLeft(node, childNode, rightSibling, idx)
 		}
 	}
 	// no rotation possible, merge
 	if idx > 0 {
+		t.freelist = append(t.freelist, node.GetPtr(idx-1), node.GetPtr(idx))
 		return t.mergeChildren(node, idx-1)
 	}
+	t.freelist = append(t.freelist, node.GetPtr(idx), node.GetPtr(idx+1))
 	return t.mergeChildren(node, idx)
 }
 
@@ -540,6 +546,7 @@ func (t *BTree) deleteKeyFromInternal(node *nodemanager.Node, k []byte, idx uint
 		return 0, err
 	}
 	if !leftChildNode.Underflow() {
+		t.freelist = append(t.freelist, node.GetPtr(idx))
 		return t.borrowFromInorderPredecessor(node, leftChildNode, idx)
 	}
 	// case A2: borrow inorder successor from right child
@@ -548,9 +555,11 @@ func (t *BTree) deleteKeyFromInternal(node *nodemanager.Node, k []byte, idx uint
 		return 0, err
 	}
 	if !rightChildNode.Underflow() {
+		t.freelist = append(t.freelist, node.GetPtr(idx+1))
 		return t.borrowFromInorderSuccessor(node, rightChildNode, idx)
 	}
 	// // case A3: both children underflowing, merge and delete
+	t.freelist = append(t.freelist, node.GetPtr(idx), node.GetPtr(idx+1))
 	if err := t.mergeChildren(node, idx); err != nil {
 		return 0, err
 	}
