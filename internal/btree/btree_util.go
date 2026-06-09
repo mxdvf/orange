@@ -84,6 +84,9 @@ func (t *BTree) handleMasterPage(pageNum uint32) error {
 	if err := t.pm.Write(0, buf); err != nil {
 		return fmt.Errorf("failed to write master page: %w", err)
 	}
+	if err := t.pm.MsyncMaster(); err != nil {
+		return fmt.Errorf("failed to sync the master: %w", err)
+	}
 	// also update the in-mem pointer and zero-out the freelist
 	t.root = pageNum
 	t.freelist = make([]uint32, 0)

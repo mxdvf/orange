@@ -4,6 +4,8 @@
 package pagemanager
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +15,10 @@ import (
 
 const (
 	PreAllocatePageNum = 80 // defines a fixed number by which our file is extended aka 80 pages are allocated at once
+)
+
+var (
+	ErrFreeListEmpty error = errors.New("free list is empty, fallback to physical disk allocation")
 )
 
 type PageManager struct {
@@ -35,7 +41,13 @@ func NewPageManager(file *os.File, sync bool, maxPageSize uint32) (*PageManager,
 	// endPageNum in the master page too, otherwise there's no way
 	// of knowing AFTER A CRASH OR REBOOT which page we were on
 	// and how many pages did we allocate causing our main file to massively
-	// blow up in size
+	// blow up in size.
+	//
+	// TODO: the way to fix this would be to read the file and
+	// encounter all the empty allocated pages that have nkeys == 0, and rebuild
+	// the currentPageNum and endPageNum, this would work because the contiguous
+	// chunks will always be at the tail of the file because of how we prioritize
+	// free list
 	return &PageManager{file, sync, nil, maxPageSize, 0, 0}, nil
 }
 
@@ -55,13 +67,6 @@ func (pm *PageManager) Read(pageNum uint32) ([]byte, error) {
 	buf := make([]byte, pm.maxPageSize)
 	copy(buf, data)
 	return buf, nil
-
-	// // given a page number -- THIS IS WORKING
-	// start := int64(pageNum * pm.maxPageSize)
-	// buf := make([]byte, 4096)
-	// // read the bytes of tha page into the buffer
-	// _, err := pm.file.ReadAt(buf, start)
-	// return buf, err
 }
 
 func (pm *PageManager) Write(pageNum uint32, buf []byte) error {
@@ -77,6 +82,30 @@ func (pm *PageManager) Fsync() error {
 		return pm.file.Sync()
 	}
 	return nil
+}
+
+func (pm *PageManager) MsyncMaster() error {
+	return unix.Msync(pm.mmapData[:4096], unix.MS_SYNC)
+}
+
+func (pm *PageManager) allocateViaFreeList() (uint32, error) {
+	// retrieve the size of free list
+	flSize := binary.BigEndian.Uint32(pm.mmapData[4:])
+	// if free list is empty, inform the caller to fallback
+	if flSize <= 0 {
+		return 0, ErrFreeListEmpty
+	}
+	// if free list has some pages, retrieve the first one
+	// from the head
+	pageNum := binary.BigEndian.Uint32(pm.mmapData[8:])
+	copy(pm.mmapData[8:], pm.mmapData[12:])
+	clear(pm.mmapData[len(pm.mmapData)-4:])
+	// and reduce the free list size count
+	binary.BigEndian.PutUint32(pm.mmapData[4:], flSize-1)
+	if err := pm.MsyncMaster(); err != nil {
+		return 0, fmt.Errorf("failed to msync the master page: %w", err)
+	}
+	return pageNum, nil
 }
 
 func filelength(file *os.File) (int, error) {

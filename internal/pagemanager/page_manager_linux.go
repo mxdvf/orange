@@ -3,6 +3,7 @@
 package pagemanager
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -10,8 +11,20 @@ import (
 )
 
 func (pm *PageManager) Allocate() (uint32, error) {
-	// if we haven't reached the end of the file, it means we have
-	// some disk pages still left to be allocated
+	// attempt to serve the allocate request via the freelist
+	if pm.endPageNum != 0 {
+		pageNum, err := pm.allocateViaFreeList()
+		if err == nil {
+			return pageNum, nil
+		}
+		if !errors.Is(err, ErrFreeListEmpty) {
+			return 0, fmt.Errorf("failed to receive page num from free list, some error occurred: %w", err)
+		}
+	}
+	// if free-list couldn't serve the allocation request, then we
+	// need to request physical pages from the disk. if we haven't
+	// reached the end of the file, it means we have, some disk pages
+	// still left to be allocated
 	if pm.currentPageNum < pm.endPageNum {
 		cpn := pm.currentPageNum
 		pm.currentPageNum++
