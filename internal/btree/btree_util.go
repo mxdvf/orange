@@ -7,7 +7,7 @@ import (
 	"github.com/mxdvf/orange/internal/nodemanager"
 )
 
-func (t *BTree) print() {
+func (t *BTree) print(bytemode bool) {
 	// performing a standard bfs
 	queue := []uint32{t.root}
 	level := 0
@@ -23,7 +23,11 @@ func (t *BTree) print() {
 			n := nodemanager.NewNode(buf)
 			// visual print logic
 			fmt.Printf("=-----==-----Level: %d-----==-----= (node size: %v, page_num: %v)\n", level, n.GetSize(), pageNum)
-			fmt.Println(string(n.Data()))
+			if bytemode {
+				fmt.Println(n.Data()[:30])
+			} else {
+				fmt.Println(string(n.Data()))
+			}
 			fmt.Println("=-------==------==------==-------=")
 			// only append children if the current node is internal
 			if n.GetType() == NodeTypeInternal {
@@ -72,6 +76,7 @@ func (t *BTree) handleMasterPage(pageNum uint32) error {
 	binary.BigEndian.PutUint32(buf[0:], pageNum)
 	// step 2: flush the freelist to the master
 	flSize := binary.BigEndian.Uint32(buf[4:])
+	// only add items if the freelist has some pages and if it's within limits
 	if int(flSize)+len(t.freelist) < (PageSize-MasterHeaderSize)/PointerSize {
 		for idx, flItem := range t.freelist {
 			start := 8 + int(flSize)*4 + idx*4
@@ -84,9 +89,9 @@ func (t *BTree) handleMasterPage(pageNum uint32) error {
 	if err := t.pm.Write(0, buf); err != nil {
 		return fmt.Errorf("failed to write master page: %w", err)
 	}
-	if err := t.pm.MsyncMaster(); err != nil {
-		return fmt.Errorf("failed to sync the master: %w", err)
-	}
+	// if err := t.pm.MsyncMaster(); err != nil {
+	// 	return fmt.Errorf("failed to sync the master: %w", err)
+	// }
 	// also update the in-mem pointer and zero-out the freelist
 	t.root = pageNum
 	t.freelist = make([]uint32, 0)

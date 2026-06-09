@@ -85,23 +85,29 @@ func (pm *PageManager) Fsync() error {
 }
 
 func (pm *PageManager) MsyncMaster() error {
-	return unix.Msync(pm.mmapData[:4096], unix.MS_SYNC)
+	masterPage := pm.mmapData[0:pm.maxPageSize]
+	return unix.Msync(masterPage, unix.MS_SYNC)
 }
 
 func (pm *PageManager) allocateViaFreeList() (uint32, error) {
+	// setup master page
+	masterPage, _ := pm.Read(0)
 	// retrieve the size of free list
-	flSize := binary.BigEndian.Uint32(pm.mmapData[4:])
+	size := binary.BigEndian.Uint32(masterPage[4:])
 	// if free list is empty, inform the caller to fallback
-	if flSize <= 0 {
+	if size <= 0 {
 		return 0, ErrFreeListEmpty
 	}
 	// if free list has some pages, retrieve the first one
 	// from the head
-	pageNum := binary.BigEndian.Uint32(pm.mmapData[8:])
-	copy(pm.mmapData[8:], pm.mmapData[12:])
-	clear(pm.mmapData[len(pm.mmapData)-4:])
+	pageNum := binary.BigEndian.Uint32(masterPage[8:])
+	copy(masterPage[8:], masterPage[12:])
+	clear(masterPage[pm.maxPageSize-4 : pm.maxPageSize])
 	// and reduce the free list size count
-	binary.BigEndian.PutUint32(pm.mmapData[4:], flSize-1)
+	binary.BigEndian.PutUint32(masterPage[4:], size-1)
+	if err := pm.Write(0, masterPage); err != nil {
+		return 0, fmt.Errorf("failed to write to the master page: %w", err)
+	}
 	if err := pm.MsyncMaster(); err != nil {
 		return 0, fmt.Errorf("failed to msync the master page: %w", err)
 	}
