@@ -108,9 +108,6 @@ func (pm *PageManager) allocateViaFreeList() (uint32, error) {
 	if err := pm.Write(0, masterPage); err != nil {
 		return 0, fmt.Errorf("failed to write to the master page: %w", err)
 	}
-	if err := pm.MsyncMaster(); err != nil {
-		return 0, fmt.Errorf("failed to msync the master page: %w", err)
-	}
 	return pageNum, nil
 }
 

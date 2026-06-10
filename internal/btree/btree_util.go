@@ -84,14 +84,17 @@ func (t *BTree) handleMasterPage(pageNum uint32) error {
 		}
 		binary.BigEndian.PutUint32(buf[4:], flSize+uint32(len(t.freelist)))
 	}
-
+	// TODO: when a write reaches here, at this point, i am not fully confident
+	// about my reasoning, although CoW is being followed immaculately and my
+	// write throughput is the highest it has reached, my intuition says there's
+	// something that i am missing. once done, i should trace the insert request
+	// and reason about every side-effect, modification, everything it does,
+	// maybe i can squeeze in extra 10-15% performance and uncover some fatal
+	// bugs who knows, let's see.
 	// write everything at once to the master
 	if err := t.pm.Write(0, buf); err != nil {
 		return fmt.Errorf("failed to write master page: %w", err)
 	}
-	// if err := t.pm.MsyncMaster(); err != nil {
-	// 	return fmt.Errorf("failed to sync the master: %w", err)
-	// }
 	// also update the in-mem pointer and zero-out the freelist
 	t.root = pageNum
 	t.freelist = make([]uint32, 0)
