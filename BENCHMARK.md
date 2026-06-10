@@ -56,3 +56,24 @@ BenchmarkInsert-8            477           2183806 ns/op
 PASS
 ok      github.com/mxdvf/btree/internal/btree   6.698s
 ```
+
+### Attempt 4 (~560 inserts/second)
+
+I could squeeze in ~24% extra throughput by using the concept of free(-page-)list. Which basically means re-using the abandoned/deleted pages because of CoW semantics. But another major win it gets me is by not continously allocating more and more physical space on the disk because I can just re-use whatever I allocated myself previously.
+
+Biggest win came from the fact that my engine's disk usage has gone down by ~92%. That's massive. Earlier one of my test cases was churning out 547MB files, not it does only 41MB.
+
+```
+goos: darwin
+goarch: arm64
+pkg: github.com/mxdvf/orange/internal/btree
+cpu: Apple M2
+BenchmarkInsert
+BenchmarkInsert-8            691           1751633 ns/op
+BenchmarkInsert-8            699           1806480 ns/op
+BenchmarkInsert-8            682           1743364 ns/op
+BenchmarkInsert-8            628           1885124 ns/op
+BenchmarkInsert-8            690           1771671 ns/op
+PASS
+ok      github.com/mxdvf/orange/internal/btree  6.593s
+```
