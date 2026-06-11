@@ -33,7 +33,7 @@ func setup(t testing.TB, sync bool) (*Engine, string) {
 	return engine, filename
 }
 
-func TestBackgroundJobInsert(t *testing.T) {
+func TestBackgroundJob(t *testing.T) {
 	eng, _ := setup(t, true)
 	val := []byte("mehul")
 
@@ -47,13 +47,13 @@ func TestBackgroundJobInsert(t *testing.T) {
 }
 
 func TestBackgroundJobSearch(t *testing.T) {
-	filename := "test/test-9215349787157604529.bin"
+	filename := "test/test-5749133887599376072.bin"
 	engine, err := NewEngine(filename, true)
 	if err != nil {
 		t.Fatalf("cannot initialize engine: %v", err)
 	}
 	val := []byte("mehul")
-	for i := range 200 {
+	for i := range 300 {
 		k := []byte("kacky-" + fmt.Sprint(i))
 		retrievedVal, err := engine.btree.Search(k)
 		if err != nil {
@@ -62,7 +62,6 @@ func TestBackgroundJobSearch(t *testing.T) {
 		if !bytes.Equal(val, retrievedVal) {
 			t.Fatal("corrupt btree")
 		}
-		fmt.Println("this key done:", string(k))
 	}
 }
 

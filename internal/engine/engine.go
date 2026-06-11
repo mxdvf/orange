@@ -26,7 +26,7 @@ func NewEngine(filename string, sync bool) (*Engine, error) {
 		return nil, fmt.Errorf("failed to setup the wal: %w", err)
 	}
 	// run a background loop
-	go wal.BackgroundJobLoop(btree)
+	// go wal.BackgroundJobLoop(btree)
 	// return the engine
 	return &Engine{btree: btree, wal: wal}, nil
 }
