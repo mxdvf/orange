@@ -11,7 +11,7 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 ## Disk Layout (aka wire format)
 
 ```
-|-------------------------------------- 4096 bytes -------------------------------------|
+|------------------------------------ 4096 bytes ---------------------------------------|
 |   type    |   nkeys  |    pointers    |   offset-list  |       key-values             |
 |    2B     |    2B    |   nkeys * 4B   |   nkeys * 2B	 |  [klen: 2B][k][vlen: 2B][v]  |
 ```
@@ -23,8 +23,7 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 - [x] Page allocator: fallocate/fcntl to pre-allocate pages (requires conditional build for macos/linux)
 - [x] Memory-mapped I/O: replace traditional I/O with memory-mapping using mmap() and mremap()
 - [x] Free list management: track and reclaim pages from deleted or CoW-replaced nodes
-- [ ] WAL: append-only log with LSN, group commit and crash recovery with CRC32 validation
-- [ ] Benchmarking: evaluates r/w latency and throughput under concurrent workloads
+- [ ] WAL: append-only log with LSN, WAL-first reads via in-mem cache, CRC32 crash recovery
 
 ## API
 
