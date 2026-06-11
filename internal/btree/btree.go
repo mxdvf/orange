@@ -127,6 +127,12 @@ func (t *BTree) Insert(k, v []byte) error {
 	if err := t.pm.Fsync(); err != nil {
 		return fmt.Errorf("failed to persist all the newly created pages: %w", err)
 	}
+	// TODO: this double fsync commit barrier does not deal with the
+	// fact that we can have abandoned pages assuming it fails exactly here
+	// aka basically after the first fsync, how do i recover those pages, how
+	// do i add them to the freelist, even more importantly, how do i persist
+	// these free pages if machine crashes right before this point (these will)
+	// forever dangle on my disk
 	// update master page using the pageNum root page
 	t.freelist = append(t.freelist, t.root)
 	if err := t.handleMasterPage(pageNum); err != nil {
