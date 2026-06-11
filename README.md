@@ -23,7 +23,7 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 - [x] Page allocator: fallocate/fcntl to pre-allocate pages (requires conditional build for macos/linux)
 - [x] Memory-mapped I/O: replace traditional I/O with memory-mapping using mmap() and mremap()
 - [x] Free list management: track and reclaim pages from deleted or CoW-replaced nodes
-- [ ] WAL: append-only log with LSN, WAL-first reads via in-mem cache, CRC32 crash recovery
+- [x] WAL: append-only log with group commits, WAL-first reads via mirrored in-mem lookup
 
 ## API
 
