@@ -76,6 +76,10 @@ func (t *BTree) handleMasterPage(pageNum uint32) error {
 	binary.BigEndian.PutUint32(buf[0:], pageNum)
 	// step 2: flush the freelist to the master
 	flSize := binary.BigEndian.Uint32(buf[4:])
+	// TODO: technically you should maintain an overflow list here, so that in
+	// case the number of free pages grow far beyond the fixed number, we still
+	// have some way to retrieve them, otherwise they would occupy unnecessary
+	// space on the disk
 	// only add items if the freelist has some pages and if it's within limits
 	if int(flSize)+len(t.freelist) < (PageSize-MasterHeaderSize)/PointerSize {
 		for idx, flItem := range t.freelist {
@@ -95,6 +99,10 @@ func (t *BTree) handleMasterPage(pageNum uint32) error {
 	if err := t.pm.Write(0, buf); err != nil {
 		return fmt.Errorf("failed to write master page: %w", err)
 	}
+	// TODO: also it's important to only ever add those pages to the free list which
+	// are not being actively traversed by a reader in real-time, that's hard to implement
+	// anyways but as soon as you start introducing concurrent workloads, it *would* in
+	// failed reads which would be catastrophic given this is meant for read-heavy workloads
 	// also update the in-mem pointer and zero-out the freelist
 	t.root = pageNum
 	t.freelist = make([]uint32, 0)

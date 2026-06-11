@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mxdvf/orange/internal/nodemanager"
 )
@@ -521,54 +520,6 @@ func TestBtreeInterleaveInsertDelete(t *testing.T) {
 		}
 		if !exists && (err == nil || val != nil) {
 			t.Fatalf("key %s should not exist", k)
-		}
-	}
-}
-
-// benchmarks
-
-func BenchmarkInsert(b *testing.B) {
-	tr, _ := setup(nil, true)
-	val := []byte("mehul")
-	var i uint64
-
-	b.ResetTimer()
-	for b.Loop() {
-		// Fast string concatenation + a single slice allocation
-		k := []byte("kacky-" + strconv.FormatUint(i, 10))
-		i++
-
-		if err := tr.Insert(k, val); err != nil && err != ErrOverflow {
-			b.Fatalf("insertion failed: %v", err)
-		}
-	}
-}
-
-func BenchmarkSearch(b *testing.B) {
-	// pre-populate the tree with 100k keys before benchmarking with fsync switched off
-	tr, _ := setup(nil, false)
-	val := []byte("mehul")
-	const numKeys = 100_000
-	for i := range uint64(numKeys) {
-		k := []byte("kacky-" + strconv.FormatUint(i, 10))
-		if err := tr.Insert(k, val); err != nil && err != ErrOverflow {
-			b.Fatalf("setup insertion failed: %v", err)
-		}
-	}
-
-	time.Sleep(2 * time.Second)
-
-	var i uint64
-	// reset timer so setup cost is excluded from benchmark
-	b.ResetTimer()
-	for b.Loop() {
-		// scatter across the full key space — not sequential
-		// this forces the btree to traverse different paths each time
-		idx := (i * 6364136223846793005) % numKeys
-		k := []byte("kacky-" + strconv.FormatUint(idx, 10))
-		i++
-		if _, err := tr.Search(k); err != nil {
-			b.Fatalf("search failed: %v", err)
 		}
 	}
 }
