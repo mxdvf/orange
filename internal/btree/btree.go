@@ -148,6 +148,38 @@ func (t *BTree) Insert(k, v []byte) error {
 	return nil
 }
 
+func (t *BTree) InsertNoSync(k, v []byte, root uint32) (uint32, error) {
+	// validate
+	if len(k)+len(v) > MaxAllowedKVLen {
+		return 0, ErrOverflow
+	}
+	// load the root from disk
+	var (
+		rootNode *nodemanager.Node
+		err      error
+	)
+	if rootNode, err = t.loadAsNode(root); err != nil {
+		return 0, fmt.Errorf("failed to load and transform the root node: %w", err)
+	}
+	// perform a Split if it's already full
+	if rootNode.Overflow() {
+		rootNode, err = t.splitRoot(rootNode)
+		if err != nil {
+			return 0, fmt.Errorf("failed to setup the new root: %w", err)
+		}
+		// ideally you would want to persist the newly split root here,
+		// it does not really matter much because if the insert fails
+		// mid-way, the split can just happen again next time
+	}
+	// from here, the wrapper takes over (node) and all operations
+	// are thus performed on the wrapper
+	pageNum, _ := t.insert(rootNode, k, v)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert the key")
+	}
+	return pageNum, nil
+}
+
 func (t *BTree) splitRoot(rootNode *nodemanager.Node) (*nodemanager.Node, error) {
 	// Split root into left and right
 	left, right, medianIndex := rootNode.Split()

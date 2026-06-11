@@ -17,7 +17,7 @@ func TestWalRecordFormat(t *testing.T) {
 }
 
 func TestWalAddRecordOnce(t *testing.T) {
-	wal, _ := NewWal()
+	wal, _ := NewWal(true)
 
 	start := time.Now()
 	if err := wal.Add([]byte("mehul"), []byte("kacky"), 2); err != nil {
@@ -27,7 +27,7 @@ func TestWalAddRecordOnce(t *testing.T) {
 }
 
 func TestWalAddRecordMultiple(t *testing.T) {
-	wal, _ := NewWal()
+	wal, _ := NewWal(true)
 	start := time.Now()
 	for i := range 100 {
 		if err := wal.Add([]byte("mehul"+fmt.Sprint(i)), []byte("kacky"), 2); err != nil {
@@ -39,11 +39,11 @@ func TestWalAddRecordMultiple(t *testing.T) {
 
 func TestWalAddRecordConcurrent(t *testing.T) {
 	now := time.Now()
-	wal, _ := NewWal()
+	wal, _ := NewWal(true)
 	var wg sync.WaitGroup
 	errChan := make(chan error, 1)
 	doneChan := make(chan error, 1)
-	iters := 9
+	iters := 1000
 	for i := range iters {
 		wg.Add(1)
 		go func(i int) {

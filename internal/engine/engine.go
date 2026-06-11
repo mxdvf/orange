@@ -4,18 +4,14 @@ package engine
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/mxdvf/orange/internal/btree"
+	"github.com/mxdvf/orange/internal/wal"
 )
 
 type Engine struct {
 	btree *btree.BTree
-	cache sync.Map
-}
-
-type entry struct {
-	op int
+	wal   *wal.Wal
 }
 
 func NewEngine(filename string, sync bool) (*Engine, error) {
@@ -24,17 +20,38 @@ func NewEngine(filename string, sync bool) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup the btree: %w", err)
 	}
-	return &Engine{btree: btree}, nil
+	// setup wal
+	wal, err := wal.NewWal(sync)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup the wal: %w", err)
+	}
+	// run a background loop
+	go wal.BackgroundJobLoop(btree)
+	// return the engine
+	return &Engine{btree: btree, wal: wal}, nil
 }
 
 func (eng *Engine) Insert(k, v []byte) error {
+	if err := eng.wal.Add(k, v, wal.InsertOp); err != nil {
+		return fmt.Errorf("failed to add insert record to the wal: %w", err)
+	}
 	return nil
 }
 
 func (eng *Engine) Delete(k, v []byte) error {
+	if err := eng.wal.Add(k, v, wal.DeleteOp); err != nil {
+		return fmt.Errorf("failed to add delete record to the wal: %w", err)
+	}
 	return nil
 }
 
 func (eng *Engine) Search(k []byte) ([]byte, error) {
-	return nil, nil
+	v, err := eng.wal.Get(k)
+	switch err {
+	case wal.ErrKeyDoesNotExist:
+		return eng.btree.Search(k)
+	case wal.ErrKeyDeleted:
+		return nil, fmt.Errorf("key does not exist: %w", err)
+	}
+	return v, nil
 }

@@ -77,3 +77,22 @@ BenchmarkInsert-8            690           1771671 ns/op
 PASS
 ok      github.com/mxdvf/orange/internal/btree  6.593s
 ```
+
+### Attempt 5 (~1440 inserts/second with batching)
+
+My WAL implementation that makes use of group commits helped me achieve this number. But sadly, it's in such experimental stage right now that talking about it would be me overselling it. But I discovered an important insight, this is technically a never-ending project. Putting a deadline on this is nearly impossible, as soon as I thought of implementing WAL, there were thousands of different things that I had to keep in mind. And the way I implemented WAL feels like the feature itself is fighting against me, not with me. So that's the point I knew I had to stop and take a break.
+
+```
+goos: darwin
+goarch: arm64
+pkg: github.com/mxdvf/orange/internal/engine
+cpu: Apple M2
+BenchmarkInsertConcurrent
+BenchmarkInsertConcurrent-8            2         576153896 ns/op              1736 inserts/s
+BenchmarkInsertConcurrent-8            2         629381312 ns/op              1589 inserts/s
+BenchmarkInsertConcurrent-8            2         704476834 ns/op              1419 inserts/s
+BenchmarkInsertConcurrent-8            2         741241854 ns/op              1349 inserts/s
+BenchmarkInsertConcurrent-8            2         904052833 ns/op              1106 inserts/s
+PASS
+ok      github.com/mxdvf/orange/internal/engine 10.379s
+```

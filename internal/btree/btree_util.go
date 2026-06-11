@@ -108,3 +108,11 @@ func (t *BTree) handleMasterPage(pageNum uint32) error {
 	t.freelist = make([]uint32, 0)
 	return nil
 }
+
+func (t *BTree) Root() uint32 {
+	return t.root
+}
+
+func (t *BTree) Fsync() {
+	t.pm.Fsync()
+}

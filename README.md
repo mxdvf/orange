@@ -23,31 +23,32 @@ Disk (raw bytes) <--> Page Manager <--> Node (in-memory wrapper)
 - [x] Page allocator: fallocate/fcntl to pre-allocate pages (requires conditional build for macos/linux)
 - [x] Memory-mapped I/O: replace traditional I/O with memory-mapping using mmap() and mremap()
 - [x] Free list management: track and reclaim pages from deleted or CoW-replaced nodes
-- [x] WAL: append-only log with group commits, WAL-first reads via mirrored in-mem lookup
+- [x] Experimental WAL: append-only recovery log with group commits and WAL-first lookups
 
 ## API
 
 ```go
 // Write some data.
-err := btree.Insert([]byte("key"), []byte("val"))
-btree.Insert([]byte("key1"), []byte("val1"))
-btree.Insert([]byte("key2"), []byte("val2"))
+err := engine.Insert([]byte("key"), []byte("val"))
+engine.Insert([]byte("key1"), []byte("val1"))
+engine.Insert([]byte("key2"), []byte("val2"))
 
 // Read it back.
-v, err := btree.Search([]byte("key1")) // val1, nil
-btree.Search([]byte("key90")) // nil, ErrKeyNotFound
+v, err := engine.Search([]byte("key1")) // val1, nil
+engine.Search([]byte("key90")) // nil, ErrKeyNotFound
 
 // Delete some data.
-err := btree.Delete([]byte("key1")) // nil
+err := engine.Delete([]byte("key1")) // nil
 ```
 
 ## Special Mentions
 
 - https://blog.minhazav.dev/memory-sharing-in-linux/#misc-mmap-is-faster-than-reading-a-file-in-blocks
 - https://transactional.blog/blog/2025-torn-writes
-- https://www.youtube.com/watch?v=OtxCzIHOMk4
 - https://www.usenix.org/system/files/fast25-jeon.pdf
 - A lot of discussions with Claude (Anthropic) because I don't know what I don't know
+- https://www.youtube.com/watch?v=OtxCzIHOMk4
+- https://www.scylladb.com/2017/10/05/io-access-methods-scylla/
 
 ## License
 

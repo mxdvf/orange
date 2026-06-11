@@ -6,9 +6,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/mxdvf/orange/internal/btree"
 )
 
 type Wal struct {
@@ -16,10 +19,11 @@ type Wal struct {
 	// 	op  |   klen 	| 	key 	|  vlen	 |	value
 	//  2B  |    2B  	|  [klen] |  	2B	 |  [vlen]
 	file                   *os.File
-	cache                  sync.Map // the key for this map is: cacheEntry
+	Cache                  sync.Map // the key for this map is: cacheEntry
+	sync                   bool
 	jobChan                chan commitRequest
 	coordinationMu         sync.RWMutex
-	checkpointMarkerOffset int
+	checkpointMarkerOffset int64
 }
 
 type commitRequest struct {
@@ -53,7 +57,7 @@ var (
 	ErrKeyDeleted      = errors.New("key has been deleted")
 )
 
-func NewWal() (*Wal, error) {
+func NewWal(sync bool) (*Wal, error) {
 	// TODO: the wal file must also not grow unbounded, i know this
 	// is a very fundamental feature but i just don't have the mental
 	// bandwidth to work on this anymore. if at all, you start working
@@ -65,6 +69,7 @@ func NewWal() (*Wal, error) {
 	}
 	w := &Wal{
 		file:    file,
+		sync:    sync,
 		jobChan: make(chan commitRequest, 1000),
 	}
 	go w.groupCommitLoop()
@@ -107,8 +112,6 @@ func (w *Wal) groupCommitLoop() {
 	// acquire locks for coordination, particularly
 	// so that a backround job just does not start
 	// till the group commit loop has the lock acquired
-	w.coordinationMu.Lock()
-	defer w.coordinationMu.Unlock()
 	// setup
 	batch := make([]commitRequest, 0, 10)
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -130,17 +133,22 @@ func (w *Wal) groupCommitLoop() {
 		for _, req := range batch {
 			combinedBuf = append(combinedBuf, req.buf...)
 		}
+		w.coordinationMu.Lock()
 		// step 3: perform a single sequential write and a single fsync
 		var err error
-		if _, err = w.file.Write(combinedBuf); err != nil {
-			err = fmt.Errorf("failed to append batch to wal: %w", err)
-		} else if err = w.file.Sync(); err != nil {
-			err = fmt.Errorf("failed to sync batch to disk: %w", err)
+		if _, errWrite := w.file.Write(combinedBuf); errWrite != nil {
+			err = fmt.Errorf("failed to append batch to wal: %w", errWrite)
 		}
+		if w.sync {
+			if errSync := w.file.Sync(); errSync != nil {
+				err = fmt.Errorf("failed to sync batch to disk: %w", errSync)
+			}
+		}
+		w.coordinationMu.Unlock()
 		// step 4: update memory cache and notify all waiting goroutines of the outcome
 		for _, req := range batch {
 			if err == nil {
-				w.cache.Store(req.key, req.entry)
+				w.Cache.Store(req.key, req.entry)
 			}
 			req.errChan <- err
 		}
@@ -153,25 +161,108 @@ func (w *Wal) groupCommitLoop() {
 	for {
 		select {
 		case req := <-w.jobChan:
-			fmt.Println("is this called? 1")
 			batch = append(batch, req)
 			if len(batch) >= 10 {
 				flush()
 			}
 		case <-ticker.C:
-			fmt.Println("is this called? 2")
 			if len(batch) > 0 {
 				flush()
-			}
-			if w.getCacheLen() > RecordEntriesThresholdNum {
-				// go w.backgroundJobLoop()
 			}
 		}
 	}
 }
 
+func (w *Wal) BackgroundJobLoop(tree *btree.BTree) {
+	// TODO: the background job loop is absolutely bonkers right now
+	// i have absolutely zero how it's even working or how is it even glued
+	// together with the btree, i don't even know if it's working the way
+	// it's supposed to work, like what on earth is it even doing, that's
+	// so sad after writing this entire code.
+	ticker := time.NewTicker(2 * time.Millisecond)
+	defer ticker.Stop()
+	// the job
+	job := func(tree *btree.BTree) {
+		offset := w.checkpointMarkerOffset
+		root := tree.Root()
+		count := 0
+		for count < RecordEntriesThresholdNum {
+			// read op code
+			opBuf := make([]byte, OpSize)
+			if _, err := w.file.ReadAt(opBuf, offset); err != nil || errors.Is(err, io.EOF) {
+				return
+			}
+			op := binary.BigEndian.Uint16(opBuf)
+			offset += OpSize
+			// read klen
+			klenBuf := make([]byte, KeyLenSize)
+			if _, err := w.file.ReadAt(klenBuf, offset); err != nil {
+				return
+			}
+			klen := binary.BigEndian.Uint16(klenBuf)
+			offset += KeyLenSize
+			// read key
+			key := make([]byte, klen)
+			if _, err := w.file.ReadAt(key, offset); err != nil {
+				return
+			}
+			offset += int64(klen)
+			// read vlen
+			vlenBuf := make([]byte, ValLenSize)
+			if _, err := w.file.ReadAt(vlenBuf, offset); err != nil {
+				return
+			}
+			vlen := binary.BigEndian.Uint16(vlenBuf)
+			offset += ValLenSize
+			// read val
+			value := make([]byte, vlen)
+			if _, err := w.file.ReadAt(value, offset); err != nil {
+				return
+			}
+			offset += int64(vlen)
+			// perform the insertion here
+			switch op {
+			case InsertOp:
+				// wire up the new root
+				newRoot, err := tree.InsertNoSync(key, value, root)
+				if err != nil {
+					panic("insert failed")
+				}
+				root = newRoot
+			case DeleteOp:
+				if err := tree.Delete(key); err != nil {
+					panic("delete failed")
+				}
+			case CheckpointOp:
+				// Do nothing, this is just a structural log marker
+			default:
+				panic(fmt.Sprintf("unknown opcode encountered: %d", op))
+			}
+			// update the cache
+			w.Cache.Delete(string(key))
+			// also fsync the btree
+			tree.Fsync()
+		}
+		// append a checkpoint to the wal
+		w.coordinationMu.Lock()
+		recordBuf := prepareRecord([]byte("#"), []byte("#"), CheckpointOp)
+		if _, err := w.file.Write(recordBuf); err != nil {
+			fmt.Println("failed to append batch to wal: %w", err)
+			return
+		}
+		w.coordinationMu.Unlock()
+		w.checkpointMarkerOffset = offset + int64(len(recordBuf))
+	}
+	// run every 10ms
+	for range ticker.C {
+		if w.getCacheLen() >= RecordEntriesThresholdNum {
+			job(tree)
+		}
+	}
+}
+
 func (w *Wal) Get(k []byte) ([]byte, error) {
-	e, ok := w.cache.Load(string(k))
+	e, ok := w.Cache.Load(string(k))
 	if !ok {
 		return nil, ErrKeyDoesNotExist
 	}
@@ -184,7 +275,7 @@ func (w *Wal) Get(k []byte) ([]byte, error) {
 
 func (w *Wal) getCacheLen() int {
 	length := 0
-	w.cache.Range(func(_, _ any) bool {
+	w.Cache.Range(func(_, _ any) bool {
 		length++
 		return true
 	})
