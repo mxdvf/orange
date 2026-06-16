@@ -1,9 +1,12 @@
 # BTree
 
-A persistent, crash-safe, copy-on-write B-Tree storage engine built from scratch in Go with zero dependencies. It currently hits ~1440 QPS for writes with batching and ~370,000 QPS for reads.
+A persistent, crash-safe, copy-on-write B-Tree storage engine built from scratch in Go with zero dependencies. It currently hits:
+- 1440 QPS for writes (batched)
+- 560 QPS for writes (individual)
+- 370,000 QPS for reads
 
 > [!IMPORTANT]
-> This is a project for learning purposes. It's extremely rough around the edges but that's the whole point of building it. After adding the WAL (even though experimental), the storage engine has become a little unstable. If you want, you could go back 3 commits, and there I have a storage engine that works like butter. I still intend to keep this version because I intend to come back to it after gaining some theoretical knowledge.
+> This is a project for learning purposes. It's extremely rough around the edges but that's the whole point of building it. After adding the WAL (even though experimental), the storage engine has become a little unstable. I am in the process of fixing that and a few other bugs following which, this could actually be considered a production grade storage engine.
 
 ## Disk Layout (aka wire format)
 
