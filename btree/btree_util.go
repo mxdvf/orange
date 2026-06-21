@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/mxdvf/orange/internal/nodemanager"
+	"github.com/mxdvf/orange/nodemanager"
 )
 
 func (t *BTree) print(bytemode bool) {
@@ -66,7 +66,7 @@ func (t *BTree) copyToNewPage(node *nodemanager.Node) (uint32, error) {
 	return pageNum, nil
 }
 
-func (t *BTree) handleMasterPage(pageNum uint32) error {
+func (t *BTree) HandleMasterPage(pageNum uint32) error {
 	// load master into memory
 	buf, err := t.pm.Read(0)
 	if err != nil {
@@ -76,10 +76,15 @@ func (t *BTree) handleMasterPage(pageNum uint32) error {
 	binary.BigEndian.PutUint32(buf[0:], pageNum)
 	// step 2: flush the freelist to the master
 	flSize := binary.BigEndian.Uint32(buf[4:])
-	// TODO: technically you should maintain an overflow list here, so that in
-	// case the number of free pages grow far beyond the fixed number, we still
-	// have some way to retrieve them, otherwise they would occupy unnecessary
-	// space on the disk
+	// TODO: IMPORTANT! IMPORTANT! IMPORTANT! technically you should maintain an
+	// overflow list here, so that in case the number of free pages grow far beyond
+	// the fixed number, we still have some way to retrieve them, otherwise they
+	// would occupy unnecessary space on the disk. AND THE REASON BEING THAT
+	// at some point when you're inserting a ton of keys, the free pages would be
+	// producted much faster than you can consume and so you will be ignoring
+	// a bunch of them due to the conditional statement below. in that case,
+	// almost all benefits of the free page would go away and your db size would
+	// keep rising
 	// only add items if the freelist has some pages and if it's within limits
 	if int(flSize)+len(t.freelist) < (PageSize-MasterHeaderSize)/PointerSize {
 		for idx, flItem := range t.freelist {
@@ -113,6 +118,6 @@ func (t *BTree) Root() uint32 {
 	return t.root
 }
 
-func (t *BTree) Fsync() {
-	t.pm.Fsync()
+func (t *BTree) Fsync() error {
+	return t.pm.Fsync()
 }

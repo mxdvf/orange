@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mxdvf/orange/internal/nodemanager"
+	"github.com/mxdvf/orange/nodemanager"
 )
 
 func init() {

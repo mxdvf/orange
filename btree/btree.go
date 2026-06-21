@@ -11,8 +11,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/mxdvf/orange/internal/nodemanager"
-	"github.com/mxdvf/orange/internal/pagemanager"
+	"github.com/mxdvf/orange/nodemanager"
+	"github.com/mxdvf/orange/pagemanager"
 )
 
 const (
@@ -135,7 +135,7 @@ func (t *BTree) Insert(k, v []byte) error {
 	// forever dangle on my disk
 	// update master page using the pageNum root page
 	t.freelist = append(t.freelist, t.root)
-	if err := t.handleMasterPage(pageNum); err != nil {
+	if err := t.HandleMasterPage(pageNum); err != nil {
 		return fmt.Errorf("failed to update the master to point to new root: %w", err)
 	}
 	// fsync barrier 2, as explained above, it's now safe to move the
@@ -173,6 +173,7 @@ func (t *BTree) InsertNoSync(k, v []byte, root uint32) (uint32, error) {
 	}
 	// from here, the wrapper takes over (node) and all operations
 	// are thus performed on the wrapper
+	t.freelist = append(t.freelist, root)
 	pageNum, _ := t.insert(rootNode, k, v)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert the key")
@@ -365,7 +366,7 @@ func (t *BTree) Delete(k []byte) error {
 	}
 	// point master to the new root
 	t.freelist = append(t.freelist, t.root)
-	if err := t.handleMasterPage(pageNum); err != nil {
+	if err := t.HandleMasterPage(pageNum); err != nil {
 		return fmt.Errorf("failed to update the master to point to new root: %w", err)
 	}
 	// fsync barrier 2
@@ -373,6 +374,24 @@ func (t *BTree) Delete(k []byte) error {
 		return fmt.Errorf("failed to point master to the new node: %w", err)
 	}
 	return nil
+}
+
+func (t *BTree) DeleteNoSync(k []byte, root uint32) (uint32, error) {
+	rootNode, err := t.loadAsNode(root)
+	if err != nil {
+		return 0, fmt.Errorf("failed to load and transform the root node: %w", err)
+	}
+	pageNum, err := t.delete(rootNode, k)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete the key: %w", err)
+	}
+	// check if root became empty after deletion (root merge collapsed it)
+	t.freelist = append(t.freelist, t.root)
+	pageNum, err = t.fillRoot(pageNum)
+	if err != nil {
+		panic("should have fixed the root here")
+	}
+	return pageNum, nil
 }
 
 func (t *BTree) delete(node *nodemanager.Node, k []byte) (uint32, error) {
@@ -665,4 +684,8 @@ func (t *BTree) fillRoot(pageNum uint32) (uint32, error) {
 		pageNum = newRoot.GetPtr(0)
 	}
 	return pageNum, nil
+}
+
+func (t *BTree) FreeListLen() int {
+	return len(t.freelist)
 }

@@ -96,3 +96,21 @@ BenchmarkInsertConcurrent-8            2         904052833 ns/op              11
 PASS
 ok      github.com/mxdvf/orange/internal/engine 10.379s
 ```
+
+### Attempt 6 (~32746 inserts/second)
+
+So I finally got rid of the entire WAL implemnentation. It just kept adding unnecessary complexity and I wouldn't deny it was a hasty attempt at getting my write throughput above 1K inserts/second. Once I got that thought of my head, it was just me and my first principles thinking. The simplest thing I could do was perform group commits on top of my already existing BTree implementation. And that's exactly what I did. And it got me the results I exactly hoped for. Along with the safety guarantees.
+
+```
+goos: darwin
+goarch: arm64
+pkg: github.com/mxdvf/orange/engine
+cpu: Apple M2
+BenchmarkInsertConcurrent-8           44          29930696 ns/op             33411 inserts/s
+BenchmarkInsertConcurrent-8           73          30739960 ns/op             32531 inserts/s
+BenchmarkInsertConcurrent-8           51          30254415 ns/op             33053 inserts/s
+BenchmarkInsertConcurrent-8           75          30605274 ns/op             32674 inserts/s
+BenchmarkInsertConcurrent-8           78          31188058 ns/op             32064 inserts/s
+PASS
+ok      github.com/mxdvf/orange/engine  10.211s
+```
