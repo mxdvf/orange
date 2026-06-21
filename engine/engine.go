@@ -97,12 +97,16 @@ func (eng *Engine) batchCommitLoop() {
 		}
 		// single fsync for the whole batch — this is the whole point
 		if flushErr == nil {
+			// fsync barrier 1
+			if err := eng.btree.Fsync(); err != nil {
+				flushErr = fmt.Errorf("failed to persist the data pages: %w", err)
+			}
 			// update master page using the pageNum root page
 			if err := eng.btree.HandleMasterPage(root); err != nil {
 				flushErr = fmt.Errorf("failed to update the master to point to new root: %w", err)
 			}
 			// fsync barrier 2
-			if err := eng.btree.Fsync(); err != nil {
+			if err := eng.btree.Msync(); err != nil {
 				flushErr = fmt.Errorf("failed to persist the master page: %w", err)
 			}
 		}

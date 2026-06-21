@@ -121,3 +121,7 @@ func (t *BTree) Root() uint32 {
 func (t *BTree) Fsync() error {
 	return t.pm.Fsync()
 }
+
+func (t *BTree) Msync() error {
+	return t.pm.MsyncMaster()
+}
