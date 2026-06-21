@@ -1,4 +1,4 @@
-# BTree
+# Orange
 
 A production-grade, persistent and crash-safe CoW B-Tree storage engine built from scratch in Go with zero dependencies. It can hit:
 
