@@ -1,6 +1,9 @@
 # BTree
 
-A production-grade, persistent and crash-safe CoW B-Tree storage engine built from scratch in Go with zero dependencies. It hits 32K writes/sec and 370K reads/sec.
+A production-grade, persistent and crash-safe CoW B-Tree storage engine built from scratch in Go with zero dependencies. It can hit:
+
+- Write throughput: 32K writes/sec
+- Read throughput: 370K reads/sec
 
 > [!IMPORTANT]
 > This is a project built for learning purposes. It is not intended for use in production.
