@@ -1,14 +1,11 @@
 # BTree
 
-A persistent, crash-safe, copy-on-write B-Tree storage engine built from scratch in Go with zero dependencies. It currently hits:
-- 1440 QPS for writes (batched)
-- 560 QPS for writes (individual)
-- 370,000 QPS for reads
+A production-grade, persistent and crash-safe CoW B-Tree storage engine built from scratch in Go with zero dependencies. It hits 32K writes/sec and 370K reads/sec.
 
 > [!IMPORTANT]
-> This is a project for learning purposes. It's extremely rough around the edges but that's the whole point of building it. After adding the WAL (even though experimental), the storage engine has become a little unstable. I am in the process of fixing that and a few other bugs following which, this could actually be considered a production grade storage engine.
+> This is a project built for learning purposes. It is not intended for use in production.
 
-## Disk Layout (aka wire format)
+## Disk Layout
 
 ```
 |------------------------------------ 4096 bytes ---------------------------------------|
@@ -23,7 +20,7 @@ A persistent, crash-safe, copy-on-write B-Tree storage engine built from scratch
 - [x] Page allocator: fallocate/fcntl to pre-allocate pages (requires conditional build for macos/linux)
 - [x] Memory-mapped I/O: replace traditional I/O with memory-mapping using mmap() and mremap()
 - [x] Free list management: track and reclaim pages from deleted or CoW-replaced nodes
-- [x] Experimental WAL\*\*: append-only recovery log with group commits and WAL-first lookups
+- [x] Group commit: engine now uses batching to commit writes in groups
 
 ## API
 
